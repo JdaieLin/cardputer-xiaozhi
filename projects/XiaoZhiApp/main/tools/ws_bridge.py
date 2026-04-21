@@ -16,6 +16,15 @@ except Exception as e:
 
 SSL_CTX = ssl._create_unverified_context()
 
+EMOTION_TO_EMOJI = {
+    "neutral": "😶", "happy": "🙂", "laughing": "😆", "funny": "😂",
+    "sad": "😔", "angry": "😠", "crying": "😭", "loving": "😍",
+    "embarrassed": "😳", "surprised": "😲", "shocked": "😱", "thinking": "🤔",
+    "winking": "😉", "cool": "😎", "relaxed": "😌", "delicious": "🤤",
+    "kissy": "😘", "confident": "😏", "sleepy": "😴", "silly": "😜",
+    "confused": "🙄", "smile": "😊",
+}
+
 
 async def read_stdin_lines(queue: asyncio.Queue[str]) -> None:
     while True:
@@ -94,6 +103,10 @@ async def run_bridge(args: argparse.Namespace) -> None:
                 elif t == "listen":
                     if data.get("state") == "stop":
                         print(json.dumps({"event": "listen_stop"}), flush=True)
+                elif t == "llm":
+                    emoji = data.get("text") or EMOTION_TO_EMOJI.get(data.get("emotion", ""), data.get("emotion", ""))
+                    if emoji:
+                        print(json.dumps({"event": "llm_emotion", "emoji": emoji}), flush=True)
                 elif t == "tts":
                     state = data.get("state")
                     if state == "start":

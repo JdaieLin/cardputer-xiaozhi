@@ -201,6 +201,10 @@ void WsClientStub::setOnServerText(std::function<void(const std::string&)> cb) {
     on_server_text_ = std::move(cb);
 }
 
+void WsClientStub::setOnEmotion(std::function<void(const std::string&)> cb) {
+    on_emotion_ = std::move(cb);
+}
+
 void WsClientStub::setOnTtsText(std::function<void(const std::string&)> cb) {
     on_tts_text_ = std::move(cb);
 }
@@ -402,6 +406,10 @@ void WsClientBridge::setOnServerText(std::function<void(const std::string&)> cb)
     on_server_text_ = std::move(cb);
 }
 
+void WsClientBridge::setOnEmotion(std::function<void(const std::string&)> cb) {
+    on_emotion_ = std::move(cb);
+}
+
 void WsClientBridge::setOnTtsText(std::function<void(const std::string&)> cb) {
     on_tts_text_ = std::move(cb);
 }
@@ -468,6 +476,14 @@ void WsClientBridge::handleEventLine(const std::string& line) {
     if (event == "tts_start") {
         if (on_tts_start_) {
             on_tts_start_();
+        }
+        return;
+    }
+
+    if (event == "llm_emotion") {
+        const std::string emoji = extractField(line, "emoji");
+        if (on_emotion_ && !emoji.empty()) {
+            on_emotion_(emoji);
         }
         return;
     }

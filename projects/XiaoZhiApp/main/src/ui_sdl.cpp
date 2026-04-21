@@ -83,7 +83,7 @@ bool UiSdl::init() {
     return true;
 }
 
-void UiSdl::renderState(AppState state, const std::string& text) {
+void UiSdl::renderState(AppState state, const std::string& text, const std::string& emoji) {
     if (renderer_ == nullptr || window_ == nullptr) {
         return;
     }
@@ -91,7 +91,7 @@ void UiSdl::renderState(AppState state, const std::string& text) {
     const std::string source_text = force_text_.empty() ? text : force_text_;
     const std::string display_text = marqueeText(source_text);
 
-    std::array<unsigned char, 3> color{30, 30, 30};
+    std::array<unsigned char, 3> color{30, 86, 145};
     switch (state) {
         case AppState::Binding:
             color = {30, 50, 95};
@@ -116,26 +116,40 @@ void UiSdl::renderState(AppState state, const std::string& text) {
     SDL_SetRenderDrawColor(renderer_, color[0], color[1], color[2], 255);
     SDL_RenderClear(renderer_);
 
-    SDL_Rect panel = {14, 14, 452, 190};
+    constexpr int kPanelX = 20;
+    constexpr int kPanelY = 14;
+    constexpr int kPanelW = 440;
+    constexpr int kPanelH = 190;
+    constexpr int kPanelPad = 14;
+    constexpr int kStatusY = 220;
+    constexpr int kStatusH = 40;
+
+    SDL_Rect panel = {kPanelX, kPanelY, kPanelW, kPanelH};
     SDL_SetRenderDrawColor(renderer_, 18, 18, 18, 220);
     SDL_RenderFillRect(renderer_, &panel);
 
-    drawMacText(renderer_, {28, 24, 300, 32}, "Cardputer XiaoZhi", {{235, 235, 235, 255}, 24.0f, true, false, false});
-    drawMacText(renderer_, {370, 20, 64, 48}, stateEmoji(state), {{255, 255, 255, 255}, 34.0f, false, true, false});
-    drawMacText(renderer_, {28, 58, 240, 24}, stateName(state), {{210, 210, 210, 255}, 16.0f, false, false, false});
+    const SDL_Rect title_rect = {kPanelX + kPanelPad, kPanelY + kPanelPad - 2, 300, 32};
+    const SDL_Rect emoji_rect = {kPanelX + kPanelW - kPanelPad - 56, kPanelY + kPanelPad - 6, 56, 56};
+    const SDL_Rect state_rect = {kPanelX + kPanelPad, kPanelY + 42, 220, 24};
+    const SDL_Rect hint_rect = {kPanelX + kPanelPad, kPanelY + 74, kPanelW - (kPanelPad * 2), 24};
+    const SDL_Rect code_rect = {kPanelX + kPanelPad, kPanelY + 102, kPanelW - (kPanelPad * 2), 52};
+
+    drawMacText(renderer_, title_rect, "Cardputer XiaoZhi", {{235, 235, 235, 255}, 24.0f, true, false, false});
+    drawMacText(renderer_, emoji_rect, emoji.empty() ? stateEmoji(state) : emoji, {{255, 255, 255, 255}, 42.0f, false, true, false});
+    drawMacText(renderer_, state_rect, stateName(state), {{210, 210, 210, 255}, 16.0f, false, false, false});
 
     if (state == AppState::Binding) {
-        drawMacText(renderer_, {28, 88, 392, 24}, "Open XiaoZhi app and bind", {{240, 240, 240, 255}, 17.0f, false, false, false});
-        drawMacText(renderer_, {28, 116, 392, 52}, std::string("Code: ") + extractCode(source_text), {{255, 244, 180, 255}, 34.0f, true, false, false});
+        drawMacText(renderer_, hint_rect, "Open XiaoZhi app and bind", {{240, 240, 240, 255}, 17.0f, false, false, false});
+        drawMacText(renderer_, code_rect, std::string("Code: ") + extractCode(source_text), {{255, 244, 180, 255}, 34.0f, true, false, false});
     } else if (state == AppState::Idle) {
-        drawMacText(renderer_, {28, 88, 392, 24}, "SPACE TO WAKE", {{240, 240, 240, 255}, 17.0f, false, false, false});
+        drawMacText(renderer_, hint_rect, "SPACE TO WAKE", {{240, 240, 240, 255}, 17.0f, false, false, false});
     }
 
-    SDL_Rect status = {20, 220, 440, 40};
+    SDL_Rect status = {kPanelX, kStatusY, kPanelW, kStatusH};
     SDL_SetRenderDrawColor(renderer_, 235, 235, 235, 255);
     SDL_RenderFillRect(renderer_, &status);
 
-    drawMacText(renderer_, {28, 224, 424, 32}, display_text, {{15, 15, 15, 255}, 16.0f, false, false, true});
+    drawMacText(renderer_, {kPanelX + kPanelPad, kStatusY, kPanelW - (kPanelPad * 2), kStatusH}, display_text, {{15, 15, 15, 255}, 16.0f, false, false, false});
 
     SDL_RenderPresent(renderer_);
     saveSnapshotIfEnabled();

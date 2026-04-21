@@ -21,6 +21,7 @@ public:
     virtual void sendAbort() {}
     virtual void sendAudioFrame(const std::vector<int16_t>& pcm) = 0;
     virtual void setOnServerText(std::function<void(const std::string&)> cb) = 0;
+    virtual void setOnEmotion(std::function<void(const std::string&)> cb) { (void)cb; }
     virtual void setOnTtsText(std::function<void(const std::string&)> cb) { (void)cb; }
     virtual void setOnListenStop(std::function<void()> cb) { (void)cb; }
     virtual void setOnTtsStart(std::function<void()> cb) = 0;
@@ -40,6 +41,7 @@ public:
     void poll() override;
     void sendAudioFrame(const std::vector<int16_t>& pcm) override;
     void setOnServerText(std::function<void(const std::string&)> cb) override;
+    void setOnEmotion(std::function<void(const std::string&)> cb) override;
     void setOnTtsText(std::function<void(const std::string&)> cb) override;
     void setOnListenStop(std::function<void()> cb) override;
     void setOnTtsStart(std::function<void()> cb) override;
@@ -50,6 +52,7 @@ public:
 
 private:
     std::function<void(const std::string&)> on_server_text_;
+    std::function<void(const std::string&)> on_emotion_;
     std::function<void(const std::string&)> on_tts_text_;
     std::function<void()> on_listen_stop_;
     std::function<void()> on_tts_start_;
@@ -76,6 +79,7 @@ public:
     void sendAbort() override;
     void sendAudioFrame(const std::vector<int16_t>& pcm) override;
     void setOnServerText(std::function<void(const std::string&)> cb) override;
+    void setOnEmotion(std::function<void(const std::string&)> cb) override;
     void setOnTtsText(std::function<void(const std::string&)> cb) override;
     void setOnListenStop(std::function<void()> cb) override;
     void setOnTtsStart(std::function<void()> cb) override;
@@ -97,6 +101,7 @@ private:
     int child_pid_ = -1;
     std::string line_buffer_;
     std::function<void(const std::string&)> on_server_text_;
+    std::function<void(const std::string&)> on_emotion_;
     std::function<void(const std::string&)> on_tts_text_;
     std::function<void()> on_listen_stop_;
     std::function<void()> on_tts_start_;

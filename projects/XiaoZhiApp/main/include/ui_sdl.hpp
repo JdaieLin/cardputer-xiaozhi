@@ -14,7 +14,7 @@ public:
     ~UiSdl() override;
 
     bool init() override;
-    void renderState(AppState state, const std::string& text) override;
+    void renderState(AppState state, const std::string& text, const std::string& emoji) override;
 
 private:
     const char* stateName(AppState state) const;

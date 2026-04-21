@@ -37,6 +37,13 @@ bool Application::start() {
         }
         updateDisplayMessage("🗣️ " + msg);
     });
+    ws_->setOnEmotion([this](const std::string& emoji) {
+        if (emoji.empty()) {
+            return;
+        }
+        current_emoji_ = emoji;
+        renderUi();
+    });
     ws_->setOnTtsText([this](const std::string& msg) {
         if (msg.empty()) {
             return;
@@ -79,9 +86,11 @@ bool Application::start() {
     activated_ = false;
     connected_ = false;
     keep_listening_ = false;
+    listen_after_connect_ = false;
     tts_text_buffer_.clear();
     status_text_.clear();
     display_text_.clear();
+    current_emoji_.clear();
 
     const OtaStatus ota_status = ota_.check();
     cfg_.device_id = ota_.deviceId();
@@ -183,7 +192,7 @@ void Application::updateDisplayMessage(const std::string& text) {
 }
 
 void Application::renderUi() {
-    ui_->renderState(state_, display_text_.empty() ? status_text_ : display_text_);
+    ui_->renderState(state_, display_text_.empty() ? status_text_ : display_text_, current_emoji_);
 }
 
 void Application::startListening(bool preserve_display) {
@@ -201,7 +210,9 @@ void Application::handleBackendDisconnected() {
     }
     connected_ = false;
     keep_listening_ = false;
+    listen_after_connect_ = false;
     audio_->stopCapture();
+    current_emoji_.clear();
     setState(AppState::Idle, "Ready", false);
 }
 
@@ -212,6 +223,13 @@ void Application::onButtonPressed() {
 
     if (!activated_) {
         setState(AppState::Binding, "code " + binding_code_ + " waiting bind");
+        return;
+    }
+
+    if (!connected_) {
+        listen_after_connect_ = true;
+        keep_listening_ = true;
+        setState(AppState::Thinking, "connecting", true);
         return;
     }
 
@@ -278,6 +296,13 @@ void Application::tickBindingFlow() {
 bool Application::connectBackend() {
     if (ws_->connect(cfg_.ws_url, cfg_.ws_token, cfg_.device_id, cfg_.client_id)) {
         connected_ = true;
+        current_emoji_.clear();
+        if (listen_after_connect_) {
+            listen_after_connect_ = false;
+            keep_listening_ = true;
+            startListening();
+            return true;
+        }
         keep_listening_ = false;
         setState(AppState::Idle, "Ready");
         return true;

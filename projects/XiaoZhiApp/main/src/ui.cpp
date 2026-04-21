@@ -28,8 +28,8 @@ bool UiStub::init() {
     return true;
 }
 
-void UiStub::renderState(AppState state, const std::string& text) {
-    std::cout << "[ui] " << stateName(state) << " | " << text << std::endl;
+void UiStub::renderState(AppState state, const std::string& text, const std::string& emoji) {
+    std::cout << "[ui] " << stateName(state) << " | " << emoji << " | " << text << std::endl;
 }
 
 }  // namespace xiaozhi
