@@ -98,10 +98,12 @@ async def run_bridge(args: argparse.Namespace) -> None:
                     state = data.get("state")
                     if state == "start":
                         print(json.dumps({"event": "tts_start"}), flush=True)
+                    elif state == "sentence_start":
+                        print(json.dumps({"event": "tts_text", "text": data.get("text", "")}), flush=True)
                     elif state == "stop":
                         print(json.dumps({"event": "tts_stop"}), flush=True)
                 elif t == "goodbye":
-                    print(json.dumps({"event": "error", "text": "server goodbye"}), flush=True)
+                    print(json.dumps({"event": "goodbye"}), flush=True)
                     return
 
         async def send_loop() -> None:

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -28,7 +29,11 @@ public:
     bool isRunning() const;
 
 private:
-    void setState(AppState state, const std::string& text);
+    void setState(AppState state, const std::string& text, bool preserve_display = false);
+    void updateDisplayMessage(const std::string& text);
+    void renderUi();
+    void startListening(bool preserve_display = false);
+    void handleBackendDisconnected();
     void onButtonPressed();
     void onButtonReleased();
     void tickBindingFlow();
@@ -43,6 +48,11 @@ private:
     int bind_poll_tick_ = 0;
     std::string binding_code_;
     std::string binding_challenge_;
+    std::string status_text_;
+    std::string display_text_;
+    std::string tts_text_buffer_;
+    bool keep_listening_ = false;
+    std::chrono::steady_clock::time_point last_ui_refresh_{};
 
     std::unique_ptr<Hal> hal_;
     std::unique_ptr<Ui> ui_;

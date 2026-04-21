@@ -75,6 +75,103 @@ std::string python3Path() {
     return {};
 }
 
+std::string appendUtf8(std::string out, unsigned codepoint) {
+    if (codepoint <= 0x7F) {
+        out.push_back(static_cast<char>(codepoint));
+    } else if (codepoint <= 0x7FF) {
+        out.push_back(static_cast<char>(0xC0 | ((codepoint >> 6) & 0x1F)));
+        out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+    } else if (codepoint <= 0xFFFF) {
+        out.push_back(static_cast<char>(0xE0 | ((codepoint >> 12) & 0x0F)));
+        out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+    } else {
+        out.push_back(static_cast<char>(0xF0 | ((codepoint >> 18) & 0x07)));
+        out.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+    }
+    return out;
+}
+
+int hexValue(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (c >= 'a' && c <= 'f') {
+        return 10 + (c - 'a');
+    }
+    return -1;
+}
+
+std::string jsonUnescape(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] != '\\' || i + 1 >= text.size()) {
+            out.push_back(text[i]);
+            continue;
+        }
+
+        const char esc = text[++i];
+        switch (esc) {
+            case '"': out.push_back('"'); break;
+            case '\\': out.push_back('\\'); break;
+            case '/': out.push_back('/'); break;
+            case 'b': out.push_back('\b'); break;
+            case 'f': out.push_back('\f'); break;
+            case 'n': out.push_back('\n'); break;
+            case 'r': out.push_back('\r'); break;
+            case 't': out.push_back('\t'); break;
+            case 'u': {
+                if (i + 4 >= text.size()) {
+                    out += "\\u";
+                    break;
+                }
+                unsigned codepoint = 0;
+                bool ok = true;
+                for (size_t j = 0; j < 4; ++j) {
+                    const int value = hexValue(text[i + 1 + j]);
+                    if (value < 0) {
+                        ok = false;
+                        break;
+                    }
+                    codepoint = (codepoint << 4) | static_cast<unsigned>(value);
+                }
+                if (!ok) {
+                    out += "\\u";
+                    break;
+                }
+                i += 4;
+                if (codepoint >= 0xD800 && codepoint <= 0xDBFF &&
+                    i + 6 < text.size() && text[i + 1] == '\\' && text[i + 2] == 'u') {
+                    unsigned low = 0;
+                    bool low_ok = true;
+                    for (size_t j = 0; j < 4; ++j) {
+                        const int value = hexValue(text[i + 3 + j]);
+                        if (value < 0) {
+                            low_ok = false;
+                            break;
+                        }
+                        low = (low << 4) | static_cast<unsigned>(value);
+                    }
+                    if (low_ok && low >= 0xDC00 && low <= 0xDFFF) {
+                        codepoint = 0x10000 + (((codepoint - 0xD800) << 10) | (low - 0xDC00));
+                        i += 6;
+                    }
+                }
+                out = appendUtf8(std::move(out), codepoint);
+                break;
+            }
+            default:
+                out.push_back(esc);
+                break;
+        }
+    }
+    return out;
+}
+
 }  // namespace
 
 bool WsClientStub::connect(const std::string& url,
@@ -104,6 +201,10 @@ void WsClientStub::setOnServerText(std::function<void(const std::string&)> cb) {
     on_server_text_ = std::move(cb);
 }
 
+void WsClientStub::setOnTtsText(std::function<void(const std::string&)> cb) {
+    on_tts_text_ = std::move(cb);
+}
+
 void WsClientStub::setOnListenStop(std::function<void()> cb) {
     on_listen_stop_ = std::move(cb);
 }
@@ -118,6 +219,14 @@ void WsClientStub::setOnTtsPcm(std::function<void(const std::vector<int16_t>&)> 
 
 void WsClientStub::setOnTtsStop(std::function<void()> cb) {
     on_tts_stop_ = std::move(cb);
+}
+
+void WsClientStub::setOnGoodbye(std::function<void()> cb) {
+    on_goodbye_ = std::move(cb);
+}
+
+void WsClientStub::setOnDisconnected(std::function<void()> cb) {
+    on_disconnected_ = std::move(cb);
 }
 
 WsClientBridge::WsClientBridge() = default;
@@ -226,6 +335,12 @@ void WsClientBridge::disconnect() {
     }
 }
 
+void WsClientBridge::notifyDisconnected() {
+    if (on_disconnected_) {
+        on_disconnected_();
+    }
+}
+
 void WsClientBridge::poll() {
     if (child_stdout_fd_ < 0) {
         return;
@@ -234,7 +349,16 @@ void WsClientBridge::poll() {
     char buf[2048];
     while (true) {
         const ssize_t n = read(child_stdout_fd_, buf, sizeof(buf));
-        if (n <= 0) {
+        if (n == 0) {
+            disconnect();
+            notifyDisconnected();
+            break;
+        }
+        if (n < 0) {
+            if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                disconnect();
+                notifyDisconnected();
+            }
             break;
         }
 
@@ -278,6 +402,10 @@ void WsClientBridge::setOnServerText(std::function<void(const std::string&)> cb)
     on_server_text_ = std::move(cb);
 }
 
+void WsClientBridge::setOnTtsText(std::function<void(const std::string&)> cb) {
+    on_tts_text_ = std::move(cb);
+}
+
 void WsClientBridge::setOnListenStop(std::function<void()> cb) {
     on_listen_stop_ = std::move(cb);
 }
@@ -294,6 +422,14 @@ void WsClientBridge::setOnTtsStop(std::function<void()> cb) {
     on_tts_stop_ = std::move(cb);
 }
 
+void WsClientBridge::setOnGoodbye(std::function<void()> cb) {
+    on_goodbye_ = std::move(cb);
+}
+
+void WsClientBridge::setOnDisconnected(std::function<void()> cb) {
+    on_disconnected_ = std::move(cb);
+}
+
 void WsClientBridge::sendJsonLine(const std::string& json_line) {
     if (child_stdin_fd_ < 0) {
         return;
@@ -304,6 +440,7 @@ void WsClientBridge::sendJsonLine(const std::string& json_line) {
         if (errno == EPIPE || errno == EBADF) {
             std::cerr << "[ws-bridge] pipe closed, disconnecting bridge" << std::endl;
             disconnect();
+            notifyDisconnected();
         } else {
             std::cerr << "[ws-bridge] write failed: " << std::strerror(errno) << std::endl;
         }
@@ -335,6 +472,14 @@ void WsClientBridge::handleEventLine(const std::string& line) {
         return;
     }
 
+    if (event == "tts_text") {
+        const std::string text = extractField(line, "text");
+        if (on_tts_text_ && !text.empty()) {
+            on_tts_text_(text);
+        }
+        return;
+    }
+
     if (event == "listen_stop") {
         if (on_listen_stop_) {
             on_listen_stop_();
@@ -345,6 +490,13 @@ void WsClientBridge::handleEventLine(const std::string& line) {
     if (event == "tts_stop") {
         if (on_tts_stop_) {
             on_tts_stop_();
+        }
+        return;
+    }
+
+    if (event == "goodbye") {
+        if (on_goodbye_) {
+            on_goodbye_();
         }
         return;
     }
@@ -375,7 +527,7 @@ std::string WsClientBridge::extractField(const std::string& line, const std::str
     const std::regex re("\\\"" + key + "\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"");
     std::smatch m;
     if (std::regex_search(line, m, re) && m.size() > 1) {
-        return m[1].str();
+        return jsonUnescape(m[1].str());
     }
     return {};
 }

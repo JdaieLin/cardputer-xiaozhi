@@ -11,6 +11,7 @@ This repository now contains **Phase 1 MVP scaffold**:
 - Runtime state machine (binding/idle/listening/thinking/speaking/error)
 - OTA-based real activation code flow for xiaozhi.me binding
 - macOS simulator audio capture/playback via SDL
+- macOS simulator text rendering with Chinese + emoji support
 - Real WebSocket dialogue bridge (Python sidecar with Opus + XiaoZhi protocol)
 
 This is intentionally minimal so we can iterate quickly and replace stubs with real SDK integrations.

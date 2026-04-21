@@ -21,10 +21,13 @@ public:
     virtual void sendAbort() {}
     virtual void sendAudioFrame(const std::vector<int16_t>& pcm) = 0;
     virtual void setOnServerText(std::function<void(const std::string&)> cb) = 0;
+    virtual void setOnTtsText(std::function<void(const std::string&)> cb) { (void)cb; }
     virtual void setOnListenStop(std::function<void()> cb) { (void)cb; }
     virtual void setOnTtsStart(std::function<void()> cb) = 0;
     virtual void setOnTtsPcm(std::function<void(const std::vector<int16_t>&)> cb) { (void)cb; }
     virtual void setOnTtsStop(std::function<void()> cb) = 0;
+    virtual void setOnGoodbye(std::function<void()> cb) { (void)cb; }
+    virtual void setOnDisconnected(std::function<void()> cb) { (void)cb; }
 };
 
 class WsClientStub final : public WsClient {
@@ -37,17 +40,23 @@ public:
     void poll() override;
     void sendAudioFrame(const std::vector<int16_t>& pcm) override;
     void setOnServerText(std::function<void(const std::string&)> cb) override;
+    void setOnTtsText(std::function<void(const std::string&)> cb) override;
     void setOnListenStop(std::function<void()> cb) override;
     void setOnTtsStart(std::function<void()> cb) override;
     void setOnTtsPcm(std::function<void(const std::vector<int16_t>&)> cb) override;
     void setOnTtsStop(std::function<void()> cb) override;
+    void setOnGoodbye(std::function<void()> cb) override;
+    void setOnDisconnected(std::function<void()> cb) override;
 
 private:
     std::function<void(const std::string&)> on_server_text_;
+    std::function<void(const std::string&)> on_tts_text_;
     std::function<void()> on_listen_stop_;
     std::function<void()> on_tts_start_;
     std::function<void(const std::vector<int16_t>&)> on_tts_pcm_;
     std::function<void()> on_tts_stop_;
+    std::function<void()> on_goodbye_;
+    std::function<void()> on_disconnected_;
     int poll_count_ = 0;
 };
 
@@ -67,12 +76,16 @@ public:
     void sendAbort() override;
     void sendAudioFrame(const std::vector<int16_t>& pcm) override;
     void setOnServerText(std::function<void(const std::string&)> cb) override;
+    void setOnTtsText(std::function<void(const std::string&)> cb) override;
     void setOnListenStop(std::function<void()> cb) override;
     void setOnTtsStart(std::function<void()> cb) override;
     void setOnTtsPcm(std::function<void(const std::vector<int16_t>&)> cb) override;
     void setOnTtsStop(std::function<void()> cb) override;
+    void setOnGoodbye(std::function<void()> cb) override;
+    void setOnDisconnected(std::function<void()> cb) override;
 
 private:
+    void notifyDisconnected();
     void sendJsonLine(const std::string& json_line);
     void handleEventLine(const std::string& line);
     std::string extractField(const std::string& line, const std::string& key) const;
@@ -84,10 +97,13 @@ private:
     int child_pid_ = -1;
     std::string line_buffer_;
     std::function<void(const std::string&)> on_server_text_;
+    std::function<void(const std::string&)> on_tts_text_;
     std::function<void()> on_listen_stop_;
     std::function<void()> on_tts_start_;
     std::function<void(const std::vector<int16_t>&)> on_tts_pcm_;
     std::function<void()> on_tts_stop_;
+    std::function<void()> on_goodbye_;
+    std::function<void()> on_disconnected_;
 };
 
 }  // namespace xiaozhi

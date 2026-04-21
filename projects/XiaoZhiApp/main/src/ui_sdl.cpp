@@ -1,83 +1,14 @@
 #include "ui_sdl.hpp"
 
-#include <array>
-#include <cctype>
+#include <cstdlib>
 #include <iostream>
 #include <regex>
-#include <unordered_map>
+#include <vector>
+
+#include "text_renderer_mac.hpp"
 
 namespace xiaozhi {
 namespace {
-
-using Glyph = std::array<unsigned char, 7>;
-
-const std::unordered_map<char, Glyph>& glyphs() {
-    static const std::unordered_map<char, Glyph> kGlyphs = {
-        {' ', {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-        {'-', {0x00, 0x00, 0x00, 0x1f, 0x00, 0x00, 0x00}},
-        {':', {0x00, 0x04, 0x00, 0x00, 0x00, 0x04, 0x00}},
-        {'/', {0x01, 0x02, 0x04, 0x08, 0x10, 0x00, 0x00}},
-        {'0', {0x0e, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0e}},
-        {'1', {0x04, 0x0c, 0x04, 0x04, 0x04, 0x04, 0x0e}},
-        {'2', {0x0e, 0x11, 0x01, 0x06, 0x08, 0x10, 0x1f}},
-        {'3', {0x1e, 0x01, 0x01, 0x0e, 0x01, 0x01, 0x1e}},
-        {'4', {0x02, 0x06, 0x0a, 0x12, 0x1f, 0x02, 0x02}},
-        {'5', {0x1f, 0x10, 0x10, 0x1e, 0x01, 0x01, 0x1e}},
-        {'6', {0x06, 0x08, 0x10, 0x1e, 0x11, 0x11, 0x0e}},
-        {'7', {0x1f, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08}},
-        {'8', {0x0e, 0x11, 0x11, 0x0e, 0x11, 0x11, 0x0e}},
-        {'9', {0x0e, 0x11, 0x11, 0x0f, 0x01, 0x02, 0x0c}},
-        {'A', {0x0e, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11}},
-        {'B', {0x1e, 0x11, 0x11, 0x1e, 0x11, 0x11, 0x1e}},
-        {'C', {0x0e, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0e}},
-        {'D', {0x1c, 0x12, 0x11, 0x11, 0x11, 0x12, 0x1c}},
-        {'E', {0x1f, 0x10, 0x10, 0x1e, 0x10, 0x10, 0x1f}},
-        {'F', {0x1f, 0x10, 0x10, 0x1e, 0x10, 0x10, 0x10}},
-        {'G', {0x0e, 0x11, 0x10, 0x10, 0x13, 0x11, 0x0f}},
-        {'H', {0x11, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11}},
-        {'I', {0x0e, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0e}},
-        {'J', {0x1f, 0x02, 0x02, 0x02, 0x02, 0x12, 0x0c}},
-        {'K', {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11}},
-        {'L', {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1f}},
-        {'M', {0x11, 0x1b, 0x15, 0x15, 0x11, 0x11, 0x11}},
-        {'N', {0x11, 0x19, 0x19, 0x15, 0x13, 0x13, 0x11}},
-        {'O', {0x0e, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e}},
-        {'P', {0x1e, 0x11, 0x11, 0x1e, 0x10, 0x10, 0x10}},
-        {'Q', {0x0e, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0d}},
-        {'R', {0x1e, 0x11, 0x11, 0x1e, 0x14, 0x12, 0x11}},
-        {'S', {0x0f, 0x10, 0x10, 0x0e, 0x01, 0x01, 0x1e}},
-        {'T', {0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}},
-        {'U', {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e}},
-        {'V', {0x11, 0x11, 0x11, 0x11, 0x11, 0x0a, 0x04}},
-        {'W', {0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0a}},
-        {'X', {0x11, 0x11, 0x0a, 0x04, 0x0a, 0x11, 0x11}},
-        {'Y', {0x11, 0x11, 0x0a, 0x04, 0x04, 0x04, 0x04}},
-        {'Z', {0x1f, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1f}},
-    };
-    return kGlyphs;
-}
-
-void drawText(SDL_Renderer* renderer, int x, int y, int scale, const std::string& text) {
-    int cursor_x = x;
-    const auto& font = glyphs();
-
-    for (char ch : text) {
-        const char up = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
-        const auto it = font.find(up);
-        const Glyph glyph = (it == font.end()) ? font.at(' ') : it->second;
-
-        for (int row = 0; row < 7; ++row) {
-            for (int col = 0; col < 5; ++col) {
-                if ((glyph[row] & (1 << (4 - col))) == 0) {
-                    continue;
-                }
-                SDL_Rect pixel = {cursor_x + col * scale, y + row * scale, scale, scale};
-                SDL_RenderFillRect(renderer, &pixel);
-            }
-        }
-        cursor_x += 6 * scale;
-    }
-}
 
 std::string extractCode(const std::string& text) {
     std::smatch match;
@@ -86,6 +17,25 @@ std::string extractCode(const std::string& text) {
         return match[1].str();
     }
     return "------";
+}
+
+std::vector<std::string> splitUtf8Glyphs(const std::string& text) {
+    std::vector<std::string> glyphs;
+    for (size_t i = 0; i < text.size();) {
+        unsigned char lead = static_cast<unsigned char>(text[i]);
+        size_t width = 1;
+        if ((lead & 0xE0) == 0xC0) {
+            width = 2;
+        } else if ((lead & 0xF0) == 0xE0) {
+            width = 3;
+        } else if ((lead & 0xF8) == 0xF0) {
+            width = 4;
+        }
+        width = std::min(width, text.size() - i);
+        glyphs.emplace_back(text.substr(i, width));
+        i += width;
+    }
+    return glyphs;
 }
 
 }  // namespace
@@ -100,6 +50,13 @@ UiSdl::~UiSdl() {
 }
 
 bool UiSdl::init() {
+    if (const char* path = std::getenv("CARDPUTER_UI_SNAPSHOT_PATH"); path != nullptr) {
+        snapshot_path_ = path;
+    }
+    if (const char* text = std::getenv("CARDPUTER_UI_FORCE_TEXT"); text != nullptr) {
+        force_text_ = text;
+    }
+
     window_ = SDL_CreateWindow("cardputer-xiaozhi simulator",
                                SDL_WINDOWPOS_CENTERED,
                                SDL_WINDOWPOS_CENTERED,
@@ -111,7 +68,12 @@ bool UiSdl::init() {
         return false;
     }
 
-    renderer_ = SDL_CreateRenderer(window_, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    Uint32 renderer_flags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC;
+    if (!snapshot_path_.empty()) {
+        renderer_flags = SDL_RENDERER_SOFTWARE;
+    }
+
+    renderer_ = SDL_CreateRenderer(window_, -1, renderer_flags);
     if (renderer_ == nullptr) {
         std::cerr << "[ui-sdl] SDL_CreateRenderer failed: " << SDL_GetError() << std::endl;
         return false;
@@ -125,6 +87,9 @@ void UiSdl::renderState(AppState state, const std::string& text) {
     if (renderer_ == nullptr || window_ == nullptr) {
         return;
     }
+
+    const std::string source_text = force_text_.empty() ? text : force_text_;
+    const std::string display_text = marqueeText(source_text);
 
     std::array<unsigned char, 3> color{30, 30, 30};
     switch (state) {
@@ -155,27 +120,75 @@ void UiSdl::renderState(AppState state, const std::string& text) {
     SDL_SetRenderDrawColor(renderer_, 18, 18, 18, 220);
     SDL_RenderFillRect(renderer_, &panel);
 
-    SDL_SetRenderDrawColor(renderer_, 210, 210, 210, 255);
-    drawText(renderer_, 28, 28, 3, "CARDPUTER XIAOZHI");
-    drawText(renderer_, 28, 62, 2, std::string("STATE: ") + stateName(state));
+    drawMacText(renderer_, {28, 24, 300, 32}, "Cardputer XiaoZhi", {{235, 235, 235, 255}, 24.0f, true, false, false});
+    drawMacText(renderer_, {370, 20, 64, 48}, stateEmoji(state), {{255, 255, 255, 255}, 34.0f, false, true, false});
+    drawMacText(renderer_, {28, 58, 240, 24}, stateName(state), {{210, 210, 210, 255}, 16.0f, false, false, false});
+
     if (state == AppState::Binding) {
-        drawText(renderer_, 28, 88, 2, "OPEN XIAOZHI APP AND BIND");
-        drawText(renderer_, 28, 118, 3, std::string("CODE: ") + extractCode(text));
-    } else {
-        drawText(renderer_, 28, 88, 2, "SPACE: PUSH TO TALK");
+        drawMacText(renderer_, {28, 88, 392, 24}, "Open XiaoZhi app and bind", {{240, 240, 240, 255}, 17.0f, false, false, false});
+        drawMacText(renderer_, {28, 116, 392, 52}, std::string("Code: ") + extractCode(source_text), {{255, 244, 180, 255}, 34.0f, true, false, false});
+    } else if (state == AppState::Idle) {
+        drawMacText(renderer_, {28, 88, 392, 24}, "SPACE TO WAKE", {{240, 240, 240, 255}, 17.0f, false, false, false});
     }
 
     SDL_Rect status = {20, 220, 440, 40};
     SDL_SetRenderDrawColor(renderer_, 235, 235, 235, 255);
     SDL_RenderFillRect(renderer_, &status);
 
-    SDL_SetRenderDrawColor(renderer_, 15, 15, 15, 255);
-    drawText(renderer_, 28, 232, 2, std::string("MSG: ") + text.substr(0, 35));
+    drawMacText(renderer_, {28, 224, 424, 32}, display_text, {{15, 15, 15, 255}, 16.0f, false, false, true});
 
     SDL_RenderPresent(renderer_);
+    saveSnapshotIfEnabled();
 
-    std::string title = std::string("cardputer-xiaozhi | ") + stateName(state) + " | " + text + " | SPACE=PTT";
+    std::string title = std::string("cardputer-xiaozhi | ") + stateName(state) + " | " + source_text;
     SDL_SetWindowTitle(window_, title.c_str());
+}
+
+std::string UiSdl::marqueeText(const std::string& text) {
+    constexpr size_t kVisibleGlyphs = 26;
+    constexpr Uint32 kStepMs = 350;
+    const std::vector<std::string> glyphs = splitUtf8Glyphs(text);
+    if (glyphs.size() <= kVisibleGlyphs) {
+        marquee_source_text_.clear();
+        marquee_start_ticks_ = 0;
+        return text;
+    }
+
+    if (text != marquee_source_text_) {
+        marquee_source_text_ = text;
+        marquee_start_ticks_ = SDL_GetTicks();
+    }
+
+    const size_t max_offset = glyphs.size() - kVisibleGlyphs;
+    const Uint32 elapsed = SDL_GetTicks() - marquee_start_ticks_;
+    const size_t offset = std::min(max_offset, static_cast<size_t>(elapsed / kStepMs));
+    std::string out;
+    for (size_t i = 0; i < kVisibleGlyphs && offset + i < glyphs.size(); ++i) {
+        out += glyphs[offset + i];
+    }
+    return out;
+}
+
+void UiSdl::saveSnapshotIfEnabled() {
+    if (snapshot_path_.empty() || renderer_ == nullptr) {
+        return;
+    }
+
+    int width = 0;
+    int height = 0;
+    if (SDL_GetRendererOutputSize(renderer_, &width, &height) != 0 || width <= 0 || height <= 0) {
+        return;
+    }
+
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (surface == nullptr) {
+        return;
+    }
+
+    if (SDL_RenderReadPixels(renderer_, nullptr, SDL_PIXELFORMAT_ARGB8888, surface->pixels, surface->pitch) == 0) {
+        SDL_SaveBMP(surface, snapshot_path_.c_str());
+    }
+    SDL_FreeSurface(surface);
 }
 
 const char* UiSdl::stateName(AppState state) const {
@@ -185,15 +198,33 @@ const char* UiSdl::stateName(AppState state) const {
         case AppState::Idle:
             return "IDLE";
         case AppState::Listening:
-            return "LISTENING";
+            return "LISTENING...";
         case AppState::Thinking:
-            return "THINKING";
+            return "THINKING...";
         case AppState::Speaking:
-            return "SPEAKING";
+            return "SPEAKING...";
         case AppState::Error:
             return "ERROR";
     }
     return "UNKNOWN";
+}
+
+const char* UiSdl::stateEmoji(AppState state) const {
+    switch (state) {
+        case AppState::Binding:
+            return "🔗";
+        case AppState::Idle:
+            return "😄";
+        case AppState::Listening:
+            return "🎙️";
+        case AppState::Thinking:
+            return "🤔";
+        case AppState::Speaking:
+            return "🔊";
+        case AppState::Error:
+            return "❌";
+    }
+    return "❓";
 }
 
 }  // namespace xiaozhi

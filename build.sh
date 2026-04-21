@@ -40,18 +40,21 @@ if [[ "$TARGET" == "sim" ]]; then
 		exit 1
 	fi
 
-	g++ -std=c++17 -Wall -Wextra -O2 \
+	clang++ -std=c++17 -Wall -Wextra -O2 \
 		-Imain/include \
 		main/src/application.cpp \
 		main/src/audio_pipeline.cpp \
-                main/src/audio_pipeline_sdl.cpp \
+		main/src/audio_pipeline_sdl.cpp \
 		main/src/config.cpp \
 		main/src/hal_sdl.cpp \
 		main/src/ota_client.cpp \
+		main/src/text_renderer_mac.mm \
 		main/src/ui_sdl.cpp \
 		main/src/ws_client.cpp \
 		main/src/main_sim.cpp \
 		${SDL_FLAGS} \
+		-framework Cocoa \
+		-framework CoreGraphics \
 		-o build/xiaozhi_simulator
 else
 	if command -v scons >/dev/null 2>&1; then

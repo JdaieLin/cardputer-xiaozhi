@@ -1,5 +1,6 @@
 #include "application.hpp"
 
+#include <chrono>
 #include <iostream>
 #include <utility>
 
@@ -25,31 +26,62 @@ bool Application::start() {
 
     hal_->onButtonPressed([this]() { onButtonPressed(); });
     hal_->onButtonReleased([this]() { onButtonReleased(); });
+    last_ui_refresh_ = std::chrono::steady_clock::now();
 
     ws_->setOnServerText([this](const std::string& msg) {
-        setState(AppState::Thinking, msg);
+        if (state_ == AppState::Listening && audio_->isCapturing()) {
+            audio_->stopCapture();
+            setState(AppState::Thinking, "server vad stop waiting response", true);
+        } else {
+            setState(AppState::Thinking, "server text", true);
+        }
+        updateDisplayMessage("🗣️ " + msg);
+    });
+    ws_->setOnTtsText([this](const std::string& msg) {
+        if (msg.empty()) {
+            return;
+        }
+        tts_text_buffer_ += msg;
+        updateDisplayMessage(tts_text_buffer_);
     });
     ws_->setOnListenStop([this]() {
         if (audio_->isCapturing()) {
             audio_->stopCapture();
-            setState(AppState::Thinking, "server vad stop waiting response");
+            setState(AppState::Thinking, "server vad stop waiting response", true);
+        } else if (state_ == AppState::Idle) {
+            keep_listening_ = false;
         }
     });
     ws_->setOnTtsStart([this]() {
         if (audio_->isCapturing()) {
             audio_->stopCapture();
         }
-        setState(AppState::Speaking, "tts start");
+        setState(AppState::Speaking, "tts start", true);
     });
     ws_->setOnTtsPcm([this](const std::vector<int16_t>& pcm) {
         audio_->playPcmFrame(pcm);
     });
-    ws_->setOnTtsStop([this]() { setState(AppState::Idle, "tts stop"); });
+    ws_->setOnTtsStop([this]() {
+        if (keep_listening_ && connected_) {
+            startListening(true);
+            return;
+        }
+        setState(AppState::Idle, "tts stop", true);
+    });
+    ws_->setOnGoodbye([this]() {
+        keep_listening_ = false;
+        setState(AppState::Idle, "server ended conversation", true);
+    });
+    ws_->setOnDisconnected([this]() { handleBackendDisconnected(); });
 
     running_ = true;
     tick_count_ = 0;
     activated_ = false;
     connected_ = false;
+    keep_listening_ = false;
+    tts_text_buffer_.clear();
+    status_text_.clear();
+    display_text_.clear();
 
     const OtaStatus ota_status = ota_.check();
     cfg_.device_id = ota_.deviceId();
@@ -86,6 +118,7 @@ void Application::stop() {
     audio_->stopCapture();
     ws_->disconnect();
     running_ = false;
+    keep_listening_ = false;
     setState(AppState::Idle, "stopped");
 }
 
@@ -122,16 +155,54 @@ void Application::tick() {
             ws_->sendAudioFrame(frame);
         }
     }
+
+    const auto now = std::chrono::steady_clock::now();
+    if (now - last_ui_refresh_ >= std::chrono::milliseconds(150)) {
+        renderUi();
+        last_ui_refresh_ = now;
+    }
 }
 
 bool Application::isRunning() const {
     return running_;
 }
 
-void Application::setState(AppState state, const std::string& text) {
+void Application::setState(AppState state, const std::string& text, bool preserve_display) {
     state_ = state;
+    status_text_ = text;
+    if (!preserve_display || display_text_.empty()) {
+        display_text_ = text;
+    }
     std::cout << "[state] " << static_cast<int>(state_) << " | " << text << std::endl;
-    ui_->renderState(state_, text);
+    renderUi();
+}
+
+void Application::updateDisplayMessage(const std::string& text) {
+    display_text_ = text;
+    renderUi();
+}
+
+void Application::renderUi() {
+    ui_->renderState(state_, display_text_.empty() ? status_text_ : display_text_);
+}
+
+void Application::startListening(bool preserve_display) {
+    if (connected_ && !audio_->isCapturing()) {
+        tts_text_buffer_.clear();
+        ws_->sendListenStart();
+        audio_->startCapture();
+        setState(AppState::Listening, "listening server vad", preserve_display);
+    }
+}
+
+void Application::handleBackendDisconnected() {
+    if (!connected_) {
+        return;
+    }
+    connected_ = false;
+    keep_listening_ = false;
+    audio_->stopCapture();
+    setState(AppState::Idle, "Ready", false);
 }
 
 void Application::onButtonPressed() {
@@ -145,15 +216,13 @@ void Application::onButtonPressed() {
     }
 
     if (state_ == AppState::Speaking) {
+        keep_listening_ = false;
         ws_->sendAbort();
-        setState(AppState::Thinking, "user wakeup interrupt");
+        setState(AppState::Thinking, "user wakeup interrupt", true);
     }
 
-    if (!audio_->isCapturing()) {
-        ws_->sendListenStart();
-        audio_->startCapture();
-        setState(AppState::Listening, "listening server vad");
-    }
+    keep_listening_ = true;
+    startListening(true);
 }
 
 void Application::onButtonReleased() {
@@ -209,7 +278,8 @@ void Application::tickBindingFlow() {
 bool Application::connectBackend() {
     if (ws_->connect(cfg_.ws_url, cfg_.ws_token, cfg_.device_id, cfg_.client_id)) {
         connected_ = true;
-        setState(AppState::Idle, "ready");
+        keep_listening_ = false;
+        setState(AppState::Idle, "Ready");
         return true;
     }
     setState(AppState::Error, "websocket connect failed");
