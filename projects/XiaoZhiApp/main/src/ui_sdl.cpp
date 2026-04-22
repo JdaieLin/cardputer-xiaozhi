@@ -142,7 +142,7 @@ void UiSdl::renderState(AppState state, const std::string& text, const std::stri
         drawMacText(renderer_, hint_rect, "Open XiaoZhi app and bind", {{240, 240, 240, 255}, 17.0f, false, false, false});
         drawMacText(renderer_, code_rect, std::string("Code: ") + extractCode(source_text), {{255, 244, 180, 255}, 34.0f, true, false, false});
     } else if (state == AppState::Idle) {
-        drawMacText(renderer_, hint_rect, "SPACE TO WAKE", {{240, 240, 240, 255}, 17.0f, false, false, false});
+        drawMacText(renderer_, hint_rect, "SPACE / ENTER TO WAKE", {{240, 240, 240, 255}, 17.0f, false, false, false});
     }
 
     SDL_Rect status = {kPanelX, kStatusY, kPanelW, kStatusH};

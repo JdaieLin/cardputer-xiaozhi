@@ -65,7 +65,10 @@ Run simulator:
 
 Controls:
 
-- `SPACE` key: wake-to-talk (press start, release does not stop)
+- AppLaunch home: `Left` / `Right` select app, `Enter` or `Space` open selected app
+- XiaoZhi app: `SPACE` or `ENTER` wake-to-talk (press start, release does not stop)
+- `Esc`: return to AppLaunch home
+- `CARDPUTER_WAKE_KEYS=Space,Return`: optional override for simulator primary action keys (comma-separated SDL key names)
 - Listening stop is decided by server VAD (`listen_stop`)
 - close window or `Ctrl+C`: exit
 
