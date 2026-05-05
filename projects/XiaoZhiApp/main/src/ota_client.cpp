@@ -1,6 +1,10 @@
 #include "ota_client.hpp"
 
+#if defined(__APPLE__)
 #include <mach-o/dyld.h>
+#elif defined(__linux__)
+#include <unistd.h>
+#endif
 
 #include <array>
 #include <cctype>
@@ -67,6 +71,7 @@ std::string trim(const std::string& s) {
 }
 
 std::filesystem::path executablePath() {
+#if defined(__APPLE__)
     uint32_t size = 0;
     _NSGetExecutablePath(nullptr, &size);
     std::string buffer(static_cast<size_t>(size), '\0');
@@ -74,6 +79,17 @@ std::filesystem::path executablePath() {
         return {};
     }
     return std::filesystem::weakly_canonical(std::filesystem::path(buffer.c_str()));
+#elif defined(__linux__)
+    std::array<char, 4096> buffer{};
+    const ssize_t size = ::readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
+    if (size <= 0) {
+        return {};
+    }
+    buffer[static_cast<size_t>(size)] = '\0';
+    return std::filesystem::weakly_canonical(std::filesystem::path(buffer.data()));
+#else
+    return {};
+#endif
 }
 
 std::string identityFilePath() {

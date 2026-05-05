@@ -196,6 +196,9 @@ void Application::renderUi() {
 }
 
 void Application::startListening(bool preserve_display) {
+    std::cout << "[wake] startListening connected=" << connected_
+              << " capturing=" << audio_->isCapturing()
+              << " preserve_display=" << preserve_display << std::endl;
     if (connected_ && !audio_->isCapturing()) {
         tts_text_buffer_.clear();
         ws_->sendListenStart();
@@ -217,6 +220,11 @@ void Application::handleBackendDisconnected() {
 }
 
 void Application::onButtonPressed() {
+    std::cout << "[wake] onButtonPressed running=" << running_
+              << " activated=" << activated_
+              << " connected=" << connected_
+              << " state=" << static_cast<int>(state_)
+              << " capturing=" << audio_->isCapturing() << std::endl;
     if (!running_) {
         return;
     }

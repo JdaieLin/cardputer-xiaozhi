@@ -28,6 +28,13 @@ AudioPipelineSdl::~AudioPipelineSdl() {
 }
 
 bool AudioPipelineSdl::init() {
+    if ((SDL_WasInit(SDL_INIT_AUDIO) & SDL_INIT_AUDIO) == 0) {
+        if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+            std::cerr << "[audio-sdl] SDL_InitSubSystem(SDL_INIT_AUDIO) failed: " << SDL_GetError() << std::endl;
+            return false;
+        }
+    }
+
     SDL_AudioSpec desired{};
     desired.freq = kTargetRate;
     desired.format = AUDIO_S16SYS;

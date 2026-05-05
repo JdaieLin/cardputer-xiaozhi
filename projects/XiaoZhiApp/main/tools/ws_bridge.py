@@ -59,6 +59,7 @@ async def run_bridge(args: argparse.Namespace) -> None:
         args.url,
         ssl=ws_ssl,
         additional_headers=headers,
+        proxy=None,
         ping_interval=20,
         ping_timeout=20,
         close_timeout=10,

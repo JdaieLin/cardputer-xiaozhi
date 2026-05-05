@@ -1,12 +1,17 @@
 #include "ws_client.hpp"
 
 #include <fcntl.h>
+
+#if defined(__APPLE__)
 #include <mach-o/dyld.h>
+#endif
+
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <array>
 #include <cerrno>
 #include <cstring>
 #include <cctype>
@@ -21,6 +26,7 @@ namespace xiaozhi {
 namespace {
 
 std::filesystem::path executablePath() {
+#if defined(__APPLE__)
     uint32_t size = 0;
     _NSGetExecutablePath(nullptr, &size);
     std::string buffer(static_cast<size_t>(size), '\0');
@@ -28,6 +34,17 @@ std::filesystem::path executablePath() {
         return {};
     }
     return std::filesystem::weakly_canonical(std::filesystem::path(buffer.c_str()));
+#elif defined(__linux__)
+    std::array<char, 4096> buffer{};
+    const ssize_t size = ::readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
+    if (size <= 0) {
+        return {};
+    }
+    buffer[static_cast<size_t>(size)] = '\0';
+    return std::filesystem::weakly_canonical(std::filesystem::path(buffer.data()));
+#else
+    return {};
+#endif
 }
 
 std::filesystem::path projectDirFromExecutable() {
@@ -44,9 +61,34 @@ std::filesystem::path projectDirFromExecutable() {
 }
 
 std::string bridgeScriptPath() {
+    if (const char* override_path = std::getenv("XIAOZHI_WS_BRIDGE"); override_path != nullptr && *override_path != '\0') {
+        if (access(override_path, R_OK) == 0) {
+            return override_path;
+        }
+    }
+
     const std::filesystem::path project_dir = projectDirFromExecutable();
     if (!project_dir.empty()) {
         return (project_dir / "main" / "tools" / "ws_bridge.py").string();
+    }
+
+    std::filesystem::path base = executablePath().parent_path();
+    const std::vector<std::filesystem::path> sibling_candidates = {
+        std::filesystem::path("cardputer-xiaozhi/projects/XiaoZhiApp/main/tools/ws_bridge.py"),
+        std::filesystem::path("../cardputer-xiaozhi/projects/XiaoZhiApp/main/tools/ws_bridge.py"),
+    };
+    for (int depth = 0; depth < 8 && !base.empty(); ++depth) {
+        for (const auto& suffix : sibling_candidates) {
+            const auto candidate = (base / suffix).lexically_normal();
+            if (access(candidate.c_str(), R_OK) == 0) {
+                return candidate.string();
+            }
+        }
+        const auto parent = base.parent_path();
+        if (parent == base) {
+            break;
+        }
+        base = parent;
     }
 
     if (access("projects/XiaoZhiApp/main/tools/ws_bridge.py", R_OK) == 0) {
@@ -318,8 +360,52 @@ bool WsClientBridge::connect(const std::string& url,
         fcntl(child_stdout_fd_, F_SETFL, flags | O_NONBLOCK);
     }
 
-    std::cout << "[ws-bridge] started" << std::endl;
-    return true;
+    std::cout << "[ws-bridge] started, waiting for handshake" << std::endl;
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(4);
+    while (std::chrono::steady_clock::now() < deadline) {
+        char buf[512];
+        const ssize_t n = read(child_stdout_fd_, buf, sizeof(buf));
+        if (n == 0) {
+            std::cerr << "[ws-bridge] exited before handshake" << std::endl;
+            disconnect();
+            return false;
+        }
+        if (n < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                usleep(20 * 1000);
+                continue;
+            }
+            std::cerr << "[ws-bridge] handshake read failed: " << std::strerror(errno) << std::endl;
+            disconnect();
+            return false;
+        }
+
+        line_buffer_.append(buf, static_cast<size_t>(n));
+        while (true) {
+            const size_t pos = line_buffer_.find('\n');
+            if (pos == std::string::npos) {
+                break;
+            }
+
+            std::string line = line_buffer_.substr(0, pos);
+            line_buffer_.erase(0, pos + 1);
+            const std::string event = extractField(line, "event");
+            if (event == "connected") {
+                std::cout << "[ws-bridge] handshake ready" << std::endl;
+                return true;
+            }
+            if (event == "error") {
+                std::cerr << "[ws-bridge] startup error: " << line << std::endl;
+                disconnect();
+                return false;
+            }
+        }
+    }
+
+    std::cerr << "[ws-bridge] handshake timeout" << std::endl;
+    disconnect();
+    return false;
 }
 
 void WsClientBridge::disconnect() {
