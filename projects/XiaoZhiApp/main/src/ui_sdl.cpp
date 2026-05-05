@@ -2,10 +2,11 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <array>
 #include <regex>
 #include <vector>
 
-#include "text_renderer_mac.hpp"
+#include "text_renderer_sdl.hpp"
 
 namespace xiaozhi {
 namespace {
@@ -134,22 +135,22 @@ void UiSdl::renderState(AppState state, const std::string& text, const std::stri
     const SDL_Rect hint_rect = {kPanelX + kPanelPad, kPanelY + 74, kPanelW - (kPanelPad * 2), 24};
     const SDL_Rect code_rect = {kPanelX + kPanelPad, kPanelY + 102, kPanelW - (kPanelPad * 2), 52};
 
-    drawMacText(renderer_, title_rect, "Cardputer XiaoZhi", {{235, 235, 235, 255}, 24.0f, true, false, false});
-    drawMacText(renderer_, emoji_rect, emoji.empty() ? stateEmoji(state) : emoji, {{255, 255, 255, 255}, 42.0f, false, true, false});
-    drawMacText(renderer_, state_rect, stateName(state), {{210, 210, 210, 255}, 16.0f, false, false, false});
+    drawSdlText(renderer_, title_rect, "Cardputer XiaoZhi", {{235, 235, 235, 255}, 24.0f, true, false, false});
+    drawSdlText(renderer_, emoji_rect, emoji.empty() ? stateEmoji(state) : emoji, {{255, 255, 255, 255}, 30.0f, false, true, false});
+    drawSdlText(renderer_, state_rect, stateName(state), {{210, 210, 210, 255}, 16.0f, false, false, false});
 
     if (state == AppState::Binding) {
-        drawMacText(renderer_, hint_rect, "Open XiaoZhi app and bind", {{240, 240, 240, 255}, 17.0f, false, false, false});
-        drawMacText(renderer_, code_rect, std::string("Code: ") + extractCode(source_text), {{255, 244, 180, 255}, 34.0f, true, false, false});
+        drawSdlText(renderer_, hint_rect, "Open XiaoZhi app and bind", {{240, 240, 240, 255}, 17.0f, false, false, false});
+        drawSdlText(renderer_, code_rect, std::string("Code: ") + extractCode(source_text), {{255, 244, 180, 255}, 30.0f, true, false, false});
     } else if (state == AppState::Idle) {
-        drawMacText(renderer_, hint_rect, "SPACE / ENTER TO WAKE", {{240, 240, 240, 255}, 17.0f, false, false, false});
+        drawSdlText(renderer_, hint_rect, "SPACE / ENTER TO WAKE", {{240, 240, 240, 255}, 17.0f, false, false, false});
     }
 
     SDL_Rect status = {kPanelX, kStatusY, kPanelW, kStatusH};
     SDL_SetRenderDrawColor(renderer_, 235, 235, 235, 255);
     SDL_RenderFillRect(renderer_, &status);
 
-    drawMacText(renderer_, {kPanelX + kPanelPad, kStatusY, kPanelW - (kPanelPad * 2), kStatusH}, display_text, {{15, 15, 15, 255}, 16.0f, false, false, false});
+    drawSdlText(renderer_, {kPanelX + kPanelPad, kStatusY, kPanelW - (kPanelPad * 2), kStatusH}, display_text, {{15, 15, 15, 255}, 16.0f, false, false, false});
 
     SDL_RenderPresent(renderer_);
     saveSnapshotIfEnabled();

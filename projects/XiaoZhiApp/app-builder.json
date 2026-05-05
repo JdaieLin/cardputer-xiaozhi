@@ -1,0 +1,8 @@
+{
+  "package_name": "xiaozhi-applaunch",
+  "version": "0.1",
+  "revision": "m5stack1",
+  "app_name": "XiaoZhi",
+  "bin_name": "xiaozhi_app",
+  "description": "XiaoZhi voice assistant APPLaunch entry"
+}

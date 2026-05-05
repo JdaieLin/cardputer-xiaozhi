@@ -5,8 +5,21 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$ROOT_DIR/projects/XiaoZhiApp"
 
 TARGET="app"
+PACKAGE=0
 if [[ "${1:-}" == "--sim" ]]; then
 	TARGET="sim"
+	shift
+fi
+if [[ "${1:-}" == "--aarch64" ]]; then
+	TARGET="aarch64"
+	shift
+fi
+if [[ "${1:-}" == "--device" ]]; then
+	TARGET="device"
+	shift
+fi
+if [[ "${1:-}" == "--package" ]]; then
+	PACKAGE=1
 	shift
 fi
 
@@ -48,14 +61,60 @@ if [[ "$TARGET" == "sim" ]]; then
 		main/src/config.cpp \
 		main/src/hal_sdl.cpp \
 		main/src/ota_client.cpp \
-		main/src/text_renderer_mac.mm \
+		main/src/text_renderer_sdl.cpp \
 		main/src/ui_sdl.cpp \
 		main/src/ws_client.cpp \
 		main/src/main_sim.cpp \
 		${SDL_FLAGS} \
-		-framework Cocoa \
-		-framework CoreGraphics \
 		-o build/xiaozhi_simulator
+elif [[ "$TARGET" == "aarch64" ]]; then
+	if ! command -v zig >/dev/null 2>&1; then
+		echo "zig not found. Install it on macOS with: brew install zig"
+		exit 1
+	fi
+
+	env \
+		ZIG_GLOBAL_CACHE_DIR="$PROJECT_DIR/build/zig-cache-global" \
+		ZIG_LOCAL_CACHE_DIR="$PROJECT_DIR/build/zig-cache" \
+		zig c++ -target aarch64-linux-gnu -std=c++17 -Wall -Wextra -Wno-nullability-completeness -O2 \
+		-Imain/include \
+		main/src/application.cpp \
+		main/src/audio_pipeline.cpp \
+		main/src/config.cpp \
+		main/src/hal_stub.cpp \
+		main/src/ota_client.cpp \
+		main/src/ui.cpp \
+		main/src/ws_client.cpp \
+		main/src/main.cpp \
+		-o build/xiaozhi_app
+
+	if [[ "$PACKAGE" == "1" ]]; then
+		"$ROOT_DIR/tools/package_applaunch.sh"
+	fi
+elif [[ "$TARGET" == "device" ]]; then
+	if ! SDL_FLAGS="$(resolve_sdl_flags)"; then
+		echo "SDL2 flags not found. Install SDL2 first."
+		exit 1
+	fi
+
+	g++ -std=c++17 -Wall -Wextra -O2 \
+		-Imain/include \
+		main/src/application.cpp \
+		main/src/audio_pipeline.cpp \
+		main/src/audio_pipeline_sdl.cpp \
+		main/src/config.cpp \
+		main/src/hal_sdl.cpp \
+		main/src/ota_client.cpp \
+		main/src/text_renderer_sdl.cpp \
+		main/src/ui_sdl.cpp \
+		main/src/ws_client.cpp \
+		main/src/main_device.cpp \
+		${SDL_FLAGS} \
+		-o build/xiaozhi_app
+
+	if [[ "$PACKAGE" == "1" ]]; then
+		"$ROOT_DIR/tools/package_applaunch.sh"
+	fi
 else
 	if command -v scons >/dev/null 2>&1; then
 		scons -Q "build/xiaozhi_app" "$@"
@@ -75,4 +134,8 @@ else
 		main/src/ws_client.cpp \
 		main/src/main.cpp \
 		-o build/xiaozhi_app
+
+	if [[ "$PACKAGE" == "1" ]]; then
+		"$ROOT_DIR/tools/package_applaunch.sh"
+	fi
 fi

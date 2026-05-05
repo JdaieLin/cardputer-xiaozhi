@@ -7,6 +7,8 @@ namespace {
 
 const char* stateName(AppState state) {
     switch (state) {
+        case AppState::Binding:
+            return "BINDING";
         case AppState::Idle:
             return "IDLE";
         case AppState::Listening:

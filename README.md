@@ -42,6 +42,19 @@ chmod +x build.sh
 
 `build.sh` tries SCons first. If `scons` is not installed, it falls back to a direct `g++` build for the current scaffold.
 
+Cross-compile a Linux aarch64 build on macOS:
+
+```bash
+brew install zig
+./build.sh --aarch64
+```
+
+Build the APPLaunch Debian package:
+
+```bash
+./build.sh --aarch64 --package
+```
+
 ## Local simulator (macOS)
 
 Install dependencies:
@@ -82,6 +95,31 @@ Run:
 
 ```bash
 ./projects/XiaoZhiApp/build/xiaozhi_app
+```
+
+## APPLaunch deployment
+
+The APPLaunch package follows the desktop/deb layout from
+`M5CardputerZero-UserDemo`:
+
+```bash
+./tools/deploy_rpi_199.sh
+```
+
+The deploy script uploads
+`projects/XiaoZhiApp/build/xiaozhi-applaunch_0.1-m5stack1_arm64.deb` to
+`pi@192.168.100.199`, installs it with sudo password `pi`, and restarts
+`APPLaunch.service`.
+
+Installed launcher entry:
+
+```ini
+[Desktop Entry]
+Name=XiaoZhi
+Exec=/usr/share/APPLaunch/bin/xiaozhi_launcher
+Terminal=true
+Sysplause=false
+Type=Application
 ```
 
 ## MVP scope
