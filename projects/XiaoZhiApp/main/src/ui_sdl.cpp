@@ -6,6 +6,7 @@
 #include <regex>
 #include <vector>
 
+#include "hal_sdl.hpp"
 #include "text_renderer_sdl.hpp"
 
 namespace xiaozhi {
@@ -58,7 +59,12 @@ bool UiSdl::init() {
         force_text_ = text;
     }
 
-    window_ = SDL_CreateWindow("cardputer-xiaozhi simulator",
+    if (!sdlVideoOk()) {
+        std::cout << "[ui-sdl] video subsystem unavailable, running headless" << std::endl;
+        return true;
+    }
+
+    window_ = SDL_CreateWindow("cardputer-xiaozhi device",
                                SDL_WINDOWPOS_CENTERED,
                                SDL_WINDOWPOS_CENTERED,
                                480,
@@ -66,7 +72,8 @@ bool UiSdl::init() {
                                SDL_WINDOW_SHOWN);
     if (window_ == nullptr) {
         std::cerr << "[ui-sdl] SDL_CreateWindow failed: " << SDL_GetError() << std::endl;
-        return false;
+        std::cout << "[ui-sdl] running headless" << std::endl;
+        return true;
     }
 
     Uint32 renderer_flags = SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC;
@@ -77,7 +84,10 @@ bool UiSdl::init() {
     renderer_ = SDL_CreateRenderer(window_, -1, renderer_flags);
     if (renderer_ == nullptr) {
         std::cerr << "[ui-sdl] SDL_CreateRenderer failed: " << SDL_GetError() << std::endl;
-        return false;
+        std::cout << "[ui-sdl] running headless" << std::endl;
+        SDL_DestroyWindow(window_);
+        window_ = nullptr;
+        return true;
     }
 
     std::cout << "[ui-sdl] initialized" << std::endl;
@@ -86,6 +96,9 @@ bool UiSdl::init() {
 
 void UiSdl::renderState(AppState state, const std::string& text, const std::string& emoji) {
     if (renderer_ == nullptr || window_ == nullptr) {
+        std::cout << "[ui-sdl] state=" << stateName(state)
+                  << " msg=" << text
+                  << " emoji=" << emoji << std::endl;
         return;
     }
 

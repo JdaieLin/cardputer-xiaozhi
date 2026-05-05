@@ -7,6 +7,8 @@
 namespace xiaozhi {
 namespace {
 
+bool g_sdl_video_ok = false;
+
 std::vector<SDL_Keycode> defaultWakeKeys() {
     return {SDLK_SPACE, SDLK_RETURN, SDLK_KP_ENTER};
 }
@@ -51,17 +53,38 @@ std::string wakeKeyNames(const std::vector<SDL_Keycode>& keys) {
 
 }  // namespace
 
+bool sdlVideoOk() {
+    return g_sdl_video_ok;
+}
+
 HalSdl::~HalSdl() {
     SDL_Quit();
 }
 
 bool HalSdl::init() {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_AUDIO) != 0) {
-        std::cerr << "[hal-sdl] SDL_Init failed: " << SDL_GetError() << std::endl;
+    Uint32 flags = SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_AUDIO;
+    int rc = SDL_Init(flags);
+
+    if (rc == 0) {
+        g_sdl_video_ok = true;
+        loadWakeKeys();
+        std::cout << "[hal-sdl] initialized (video+events+audio)" << std::endl;
+        return true;
+    }
+
+    std::cerr << "[hal-sdl] SDL_Init(video+events+audio) failed: " << SDL_GetError() << std::endl;
+    std::cerr << "[hal-sdl] retrying without video subsystem" << std::endl;
+
+    SDL_Quit();
+    rc = SDL_Init(SDL_INIT_EVENTS | SDL_INIT_AUDIO);
+    if (rc != 0) {
+        std::cerr << "[hal-sdl] SDL_Init(events+audio) failed: " << SDL_GetError() << std::endl;
         return false;
     }
+
+    g_sdl_video_ok = false;
     loadWakeKeys();
-    std::cout << "[hal-sdl] initialized" << std::endl;
+    std::cout << "[hal-sdl] initialized (events+audio only, headless)" << std::endl;
     return true;
 }
 

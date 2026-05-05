@@ -46,6 +46,7 @@ private:
     bool connected_ = false;
     int tick_count_ = 0;
     int bind_poll_tick_ = 0;
+    int connect_retry_count_ = 0;
     std::string binding_code_;
     std::string binding_challenge_;
     std::string status_text_;

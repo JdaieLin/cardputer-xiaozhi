@@ -19,9 +19,13 @@ Application::Application(AppConfig cfg,
       ota_(cfg_) {}
 
 bool Application::start() {
-    if (!hal_->init() || !ui_->init() || !audio_->init()) {
-        setState(AppState::Error, "failed to initialize subsystem");
+    if (!hal_->init()) {
+        setState(AppState::Error, "hal init failed");
         return false;
+    }
+
+    if (!ui_->init()) {
+        std::cerr << "[app] ui init failed, continuing headless" << std::endl;
     }
 
     hal_->onButtonPressed([this]() { onButtonPressed(); });
@@ -83,8 +87,10 @@ bool Application::start() {
 
     running_ = true;
     tick_count_ = 0;
+    bind_poll_tick_ = 0;
     activated_ = false;
     connected_ = false;
+    connect_retry_count_ = 0;
     keep_listening_ = false;
     listen_after_connect_ = false;
     tts_text_buffer_.clear();
@@ -92,12 +98,18 @@ bool Application::start() {
     display_text_.clear();
     current_emoji_.clear();
 
+    if (!audio_->init()) {
+        std::cerr << "[app] audio init failed, running without sound I/O" << std::endl;
+        setState(AppState::Error, "audio init failed, no sound I/O");
+        return true;
+    }
+
     const OtaStatus ota_status = ota_.check();
     cfg_.device_id = ota_.deviceId();
     cfg_.client_id = ota_.clientId();
     if (!ota_status.ok) {
         setState(AppState::Error, "ota failed " + ota_status.error);
-        return false;
+        return true;
     }
 
     if (ota_status.paired) {
@@ -150,8 +162,12 @@ void Application::tick() {
     }
 
     if (!connected_) {
+        connect_retry_count_++;
+        if (connect_retry_count_ < 120) {
+            return;
+        }
+        connect_retry_count_ = 0;
         if (!connectBackend()) {
-            stop();
             return;
         }
     }

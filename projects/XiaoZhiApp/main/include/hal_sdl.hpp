@@ -9,6 +9,8 @@
 
 namespace xiaozhi {
 
+bool sdlVideoOk();
+
 class HalSdl final : public Hal {
 public:
     HalSdl() = default;

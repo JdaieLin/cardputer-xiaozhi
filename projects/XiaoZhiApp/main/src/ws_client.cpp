@@ -13,6 +13,7 @@
 
 #include <array>
 #include <cerrno>
+#include <cstdio>
 #include <cstring>
 #include <cctype>
 #include <filesystem>
@@ -114,6 +115,25 @@ std::string python3Path() {
             return candidate;
         }
     }
+
+    std::array<char, 256> buf{};
+    std::string out;
+    FILE* pipe = popen("which python3 2>/dev/null", "r");
+    if (pipe != nullptr) {
+        while (fgets(buf.data(), static_cast<int>(buf.size()), pipe) != nullptr) {
+            out += buf.data();
+        }
+        pclose(pipe);
+    }
+    if (!out.empty()) {
+        while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) {
+            out.pop_back();
+        }
+        if (access(out.c_str(), X_OK) == 0) {
+            return out;
+        }
+    }
+
     return {};
 }
 

@@ -105,8 +105,7 @@ elif [[ "$TARGET" == "device" ]]; then
 		main/src/config.cpp \
 		main/src/hal_sdl.cpp \
 		main/src/ota_client.cpp \
-		main/src/text_renderer_sdl.cpp \
-		main/src/ui_sdl.cpp \
+		main/src/ui_fbdev.cpp \
 		main/src/ws_client.cpp \
 		main/src/main_device.cpp \
 		${SDL_FLAGS} \

@@ -27,7 +27,13 @@ install -m 0644 "$PROJECT_DIR/main/tools/ws_bridge.py" "$PKG_ROOT/usr/share/APPL
 cat > "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_launcher" <<'EOF'
 #!/usr/bin/env sh
 export XIAOZHI_WS_BRIDGE=/usr/share/APPLaunch/share/xiaozhi/ws_bridge.py
-exec /usr/share/APPLaunch/bin/xiaozhi_app
+export SDL_AUDIODRIVER=alsa
+export SDL_VIDEODRIVER=dummy
+export XIAOZHI_FBDEV=/dev/fb0
+LOG_DIR="/tmp/xiaozhi_logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/xiaozhi_$(date +%Y%m%d_%H%M%S).log"
+exec /usr/share/APPLaunch/bin/xiaozhi_app >>"$LOG_FILE" 2>&1
 EOF
 chmod 0755 "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_launcher"
 
