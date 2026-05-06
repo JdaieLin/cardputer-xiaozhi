@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-FONT_URL_BASE="https://github.com/JdaieLin/cardputer-xiaozhi/releases/download/fonts"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Bundled fonts may be next to install.sh (CI artifact) or inside .deb install path
+BUNDLED_FONTS=""
+for d in "$SCRIPT_DIR/fonts" "/usr/share/APPLaunch/share/xiaozhi/fonts"; do
+    if [ -d "$d" ] && [ -n "$(ls -A "$d" 2>/dev/null)" ]; then
+        BUNDLED_FONTS="$d"
+        break
+    fi
+done
 FONT_DIR="/usr/share/fonts/truetype/xiaozhi"
 
 echo "=== XiaoZhi App Launcher installer ==="
@@ -53,8 +61,9 @@ for candidate in \
     "/usr/share/fonts/opentype/noto/NotoSansCJKSC-Regular.otf" \
     "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc" \
     "/usr/share/fonts/truetype/noto/NotoSansSC-Regular.otf" \
-    "/usr/share/fonts/truetype/xiaozhi/NotoSansSC-Bold.ttf"; do
-    if [ -f "$candidate" ]; then
+    "$FONT_DIR/NotoSansSC-Bold.ttf" \
+    ${BUNDLED_FONTS:+"$BUNDLED_FONTS/NotoSansSC-Bold.ttf"}; do
+    if [ -n "$candidate" ] && [ -f "$candidate" ]; then
         FONT_OK=1
         echo "  ✓ CJK font: $candidate"
         break
@@ -65,8 +74,9 @@ EMOJI_OK=0
 for candidate in \
     "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf" \
     "/usr/share/fonts/opentype/noto/NotoColorEmoji.ttf" \
-    "/usr/share/fonts/truetype/xiaozhi/NotoColorEmoji.ttf"; do
-    if [ -f "$candidate" ]; then
+    "$FONT_DIR/NotoColorEmoji.ttf" \
+    ${BUNDLED_FONTS:+"$BUNDLED_FONTS/NotoColorEmoji.ttf"}; do
+    if [ -n "$candidate" ] && [ -f "$candidate" ]; then
         EMOJI_OK=1
         echo "  ✓ Emoji font: $candidate"
         break
@@ -74,33 +84,43 @@ for candidate in \
 done
 
 if [ "$FONT_OK" -eq 0 ] || [ "$EMOJI_OK" -eq 0 ]; then
-    echo "  → downloading minimal fonts to $FONT_DIR ..."
+    echo "  → installing fonts to $FONT_DIR ..."
     mkdir -p "$FONT_DIR"
 
     if [ "$FONT_OK" -eq 0 ]; then
-        echo "  → fetching NotoSansSC-Bold.ttf ..."
-        curl -fsSLo "$FONT_DIR/NotoSansSC-Bold.ttf" \
-            "$FONT_URL_BASE/NotoSansSC-Bold.ttf" 2>/dev/null || {
-            echo "  ⚠ font download failed, trying apt fallback..."
-            if [ "$(id -u)" -eq 0 ]; then
-                apt-get install -y fonts-noto-cjk 2>/dev/null || true
-            else
-                sudo apt-get install -y fonts-noto-cjk 2>/dev/null || true
-            fi
-        }
+        if [ -n "${BUNDLED_FONTS:-}" ] && [ -f "$BUNDLED_FONTS/NotoSansSC-Bold.ttf" ]; then
+            echo "  → using bundled CJK font"
+            cp "$BUNDLED_FONTS/NotoSansSC-Bold.ttf" "$FONT_DIR/"
+        else
+            echo "  → fetching NotoSansSC-Bold.ttf from Google Fonts..."
+            curl -fsSLo "$FONT_DIR/NotoSansSC-Bold.ttf" \
+                "https://github.com/google/fonts/raw/main/ofl/notosanssc/static/NotoSansSC-Bold.ttf" 2>/dev/null || {
+                echo "  ⚠ font download failed, trying apt fallback..."
+                if [ "$(id -u)" -eq 0 ]; then
+                    apt-get install -y fonts-noto-cjk 2>/dev/null || true
+                else
+                    sudo apt-get install -y fonts-noto-cjk 2>/dev/null || true
+                fi
+            }
+        fi
     fi
 
     if [ "$EMOJI_OK" -eq 0 ]; then
-        echo "  → fetching NotoColorEmoji.ttf ..."
-        curl -fsSLo "$FONT_DIR/NotoColorEmoji.ttf" \
-            "$FONT_URL_BASE/NotoColorEmoji.ttf" 2>/dev/null || {
-            echo "  ⚠ emoji font download failed, trying apt fallback..."
-            if [ "$(id -u)" -eq 0 ]; then
-                apt-get install -y fonts-noto-color-emoji 2>/dev/null || true
-            else
-                sudo apt-get install -y fonts-noto-color-emoji 2>/dev/null || true
-            fi
-        }
+        if [ -n "${BUNDLED_FONTS:-}" ] && [ -f "$BUNDLED_FONTS/NotoColorEmoji.ttf" ]; then
+            echo "  → using bundled emoji font"
+            cp "$BUNDLED_FONTS/NotoColorEmoji.ttf" "$FONT_DIR/"
+        else
+            echo "  → fetching NotoColorEmoji.ttf from Google Fonts..."
+            curl -fsSLo "$FONT_DIR/NotoColorEmoji.ttf" \
+                "https://github.com/google/fonts/raw/main/ofl/notocoloremoji/NotoColorEmoji%5Bwght%5D.ttf" 2>/dev/null || {
+                echo "  ⚠ emoji font download failed, trying apt fallback..."
+                if [ "$(id -u)" -eq 0 ]; then
+                    apt-get install -y fonts-noto-color-emoji 2>/dev/null || true
+                else
+                    sudo apt-get install -y fonts-noto-color-emoji 2>/dev/null || true
+                fi
+            }
+        fi
     fi
 
     # Update font cache

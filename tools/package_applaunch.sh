@@ -26,8 +26,12 @@ install -m 0644 "$PROJECT_DIR/main/tools/ws_bridge.py" "$PKG_ROOT/usr/share/APPL
 install -m 0644 "$PROJECT_DIR/main/tools/display_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/display_bridge.py"
 install -m 0755 "$ROOT_DIR/tools/install.sh" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/install.sh"
 
-# Also copy install.sh alongside the .deb for standalone use
-cp "$ROOT_DIR/tools/install.sh" "$BUILD_DIR/install.sh"
+# Bundle fonts into the .deb if they were fetched by CI
+if [ -d "$ROOT_DIR/tools/fonts" ] && [ -n "$(ls -A "$ROOT_DIR/tools/fonts" 2>/dev/null)" ]; then
+    mkdir -p "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/fonts"
+    cp "$ROOT_DIR/tools/fonts/"* "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/fonts/"
+    echo "[package] bundled fonts: $(ls "$ROOT_DIR/tools/fonts/")"
+fi
 
 
 cat > "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_launcher" <<'EOF'
