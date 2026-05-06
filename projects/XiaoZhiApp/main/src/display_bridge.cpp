@@ -171,6 +171,14 @@ bool DisplayBridge::init() {
             if (line.find("\"connected\"") != std::string::npos) {
                 std::cout << "[display-bridge] handshake ready" << std::endl;
                 connected_ = true;
+                // Drain child stdout/stderr pipe in background to prevent pipe-buffer deadlock.
+                std::thread([fd = child_stdout_fd_]() {
+                    char buf[512];
+                    while (true) {
+                        ssize_t n = read(fd, buf, sizeof(buf));
+                        if (n <= 0) break;
+                    }
+                }).detach();
                 return true;
             }
         }

@@ -181,11 +181,7 @@ void Application::tick() {
         }
     }
 
-    const auto now = std::chrono::steady_clock::now();
-    if (now - last_ui_refresh_ >= std::chrono::milliseconds(150)) {
-        renderUi();
-        last_ui_refresh_ = now;
-    }
+    renderUi();
 }
 
 bool Application::isRunning() const {
@@ -208,6 +204,11 @@ void Application::updateDisplayMessage(const std::string& text) {
 }
 
 void Application::renderUi() {
+    const auto now = std::chrono::steady_clock::now();
+    if (now - last_ui_refresh_ < std::chrono::milliseconds(150)) {
+        return;
+    }
+    last_ui_refresh_ = now;
     ui_->renderState(state_, display_text_.empty() ? status_text_ : display_text_, current_emoji_);
 }
 

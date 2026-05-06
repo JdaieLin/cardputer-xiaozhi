@@ -330,13 +330,9 @@ def main():
                     current["text"] = cmd.get("text", "")
                     current["code"] = cmd.get("code", "")
                     current["has_frame"] = True
-                    print(
-                        f"[display-bridge] render status={current['status']} emoji={current['emoji']} text={current['text'][:30]}",
-                        file=sys.stderr,
-                        flush=True,
-                    )
                 except Exception:
-                    traceback.print_exc(file=sys.stderr)
+                    # write to stdout (NOT stderr) to allow C++ drain thread to consume it
+                    traceback.print_exc()
 
         if current["has_frame"]:
             try:
