@@ -19,20 +19,22 @@ XiaoZhi voice assistant ported to M5Cardputer (Raspberry Pi Zero + framebuffer d
 cardputer-xiaozhi/
   .env.template                  # Environment variable template
   build.sh                       # Multi-target build script
+  SConstruct                     # SCons build file (optional)
+  app-builder.json               # Package metadata
+  config_defaults.mk             # Build config
   tools/
     deploy_rpi_199.sh            # Deploy to Raspberry Pi (192.168.100.199)
     package_applaunch.sh         # Create .deb package for APPLaunch
+    install.sh                   # Dependency + font installer
+    fetch_fonts.sh               # Download fonts for CI bundling
   .github/workflows/
     build-deb.yml                # CI: auto-build arm64 .deb
-  projects/XiaoZhiApp/
-    SConstruct                   # SCons build file
-    app-builder.json             # Package metadata
-    main/
-      include/                   # Headers
-      src/                       # C++ sources
-      tools/
-        display_bridge.py        # Python PIL framebuffer renderer
-        ws_bridge.py             # Python WebSocket + Opus bridge
+  main/
+    include/                     # Headers
+    src/                         # C++ sources
+    tools/
+      display_bridge.py          # Python PIL framebuffer renderer
+      ws_bridge.py               # Python WebSocket + Opus bridge
 ```
 
 ## Quick start
@@ -50,7 +52,7 @@ sudo pip3 install --break-system-packages websockets opuslib pillow
 
 ```bash
 ./build.sh --device --package
-# Output: projects/XiaoZhiApp/build/xiaozhi-applaunch_0.1-m5stack1_arm64.deb
+# Output: build/xiaozhi-applaunch_0.1-m5stack1_arm64.deb
 ```
 
 ### Cross-compile from macOS (aarch64)
@@ -66,7 +68,7 @@ brew install zig
 brew install sdl2
 pip3 install websockets opuslib
 ./build.sh --sim
-./projects/XiaoZhiApp/build/xiaozhi_simulator
+./build/xiaozhi_simulator
 ```
 
 ## CI / Automatic builds
@@ -90,7 +92,7 @@ This script:
 ### Manual install
 
 ```bash
-scp projects/XiaoZhiApp/build/xiaozhi-applaunch_0.1-m5stack1_arm64.deb pi@192.168.100.199:/tmp/
+scp build/xiaozhi-applaunch_0.1-m5stack1_arm64.deb pi@192.168.100.199:/tmp/
 ssh pi@192.168.100.199 "sudo dpkg -i /tmp/xiaozhi-applaunch_0.1-m5stack1_arm64.deb"
 ssh pi@192.168.100.199 "sudo systemctl restart APPLaunch.service"
 ```

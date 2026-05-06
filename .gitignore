@@ -1,3 +1,4 @@
-projects/XiaoZhiApp/build
+build/
 tools/fonts/
 __pycache__
+*.env

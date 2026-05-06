@@ -2,7 +2,6 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$ROOT_DIR/projects/XiaoZhiApp"
 
 TARGET="app"
 PACKAGE=0
@@ -23,7 +22,7 @@ if [[ "${1:-}" == "--package" ]]; then
 	shift
 fi
 
-cd "$PROJECT_DIR"
+cd "$ROOT_DIR"
 
 resolve_sdl_flags() {
 	resolve_sdl_pkg_flags() {
@@ -103,8 +102,8 @@ elif [[ "$TARGET" == "aarch64" ]]; then
 	fi
 
 	env \
-		ZIG_GLOBAL_CACHE_DIR="$PROJECT_DIR/build/zig-cache-global" \
-		ZIG_LOCAL_CACHE_DIR="$PROJECT_DIR/build/zig-cache" \
+		ZIG_GLOBAL_CACHE_DIR="$ROOT_DIR/build/zig-cache-global" \
+		ZIG_LOCAL_CACHE_DIR="$ROOT_DIR/build/zig-cache" \
 		zig c++ -target aarch64-linux-gnu -std=c++17 -Wall -Wextra -Wno-nullability-completeness -O2 \
 		-Imain/include \
 		main/src/application.cpp \

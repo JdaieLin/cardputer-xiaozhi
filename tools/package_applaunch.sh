@@ -2,8 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-PROJECT_DIR="$ROOT_DIR/projects/XiaoZhiApp"
-BUILD_DIR="$PROJECT_DIR/build"
+BUILD_DIR="$ROOT_DIR/build"
 BIN="$BUILD_DIR/xiaozhi_app"
 PKG_ROOT="$BUILD_DIR/applaunch-package"
 OUT_DEB="$BUILD_DIR/xiaozhi-applaunch_0.1-m5stack1_arm64.deb"
@@ -22,8 +21,8 @@ mkdir -p \
 	"$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi"
 
 install -m 0755 "$BIN" "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_app"
-install -m 0644 "$PROJECT_DIR/main/tools/ws_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/ws_bridge.py"
-install -m 0644 "$PROJECT_DIR/main/tools/display_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/display_bridge.py"
+install -m 0644 "$ROOT_DIR/main/tools/ws_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/ws_bridge.py"
+install -m 0644 "$ROOT_DIR/main/tools/display_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/display_bridge.py"
 install -m 0755 "$ROOT_DIR/tools/install.sh" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/install.sh"
 
 # Bundle fonts into the .deb if they were fetched by CI

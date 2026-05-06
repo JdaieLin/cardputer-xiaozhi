@@ -75,8 +75,8 @@ std::string bridgeScriptPath() {
 
     std::filesystem::path base = executablePath().parent_path();
     const std::vector<std::filesystem::path> sibling_candidates = {
-        std::filesystem::path("cardputer-xiaozhi/projects/XiaoZhiApp/main/tools/ws_bridge.py"),
-        std::filesystem::path("../cardputer-xiaozhi/projects/XiaoZhiApp/main/tools/ws_bridge.py"),
+        std::filesystem::path("cardputer-xiaozhi/main/tools/ws_bridge.py"),
+        std::filesystem::path("../cardputer-xiaozhi/main/tools/ws_bridge.py"),
     };
     for (int depth = 0; depth < 8 && !base.empty(); ++depth) {
         for (const auto& suffix : sibling_candidates) {
@@ -92,9 +92,6 @@ std::string bridgeScriptPath() {
         base = parent;
     }
 
-    if (access("projects/XiaoZhiApp/main/tools/ws_bridge.py", R_OK) == 0) {
-        return "projects/XiaoZhiApp/main/tools/ws_bridge.py";
-    }
     if (access("main/tools/ws_bridge.py", R_OK) == 0) {
         return "main/tools/ws_bridge.py";
     }

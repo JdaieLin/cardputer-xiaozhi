@@ -33,7 +33,7 @@ jobs:
       - name: Show deb metadata
         run: |
           set -e
-          deb=$(ls projects/XiaoZhiApp/build/xiaozhi-applaunch_*_arm64.deb)
+          deb=$(ls build/xiaozhi-applaunch_*_arm64.deb)
           echo "=== $deb ==="
           dpkg-deb -I "$deb"
           echo "=== contents ==="
@@ -42,14 +42,14 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: xiaozhi-applaunch-arm64-deb
-          path: projects/XiaoZhiApp/build/xiaozhi-applaunch_*_arm64.deb
+          path: build/xiaozhi-applaunch_*_arm64.deb
           if-no-files-found: error
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: projects/XiaoZhiApp/build/xiaozhi-applaunch_*_arm64.deb
+          files: build/xiaozhi-applaunch_*_arm64.deb
 
   prerelease:
     needs: arm64
