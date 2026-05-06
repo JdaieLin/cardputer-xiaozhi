@@ -24,6 +24,10 @@ mkdir -p \
 install -m 0755 "$BIN" "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_app"
 install -m 0644 "$PROJECT_DIR/main/tools/ws_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/ws_bridge.py"
 install -m 0644 "$PROJECT_DIR/main/tools/display_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/display_bridge.py"
+install -m 0755 "$ROOT_DIR/tools/install.sh" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/install.sh"
+
+# Also copy install.sh alongside the .deb for standalone use
+cp "$ROOT_DIR/tools/install.sh" "$BUILD_DIR/install.sh"
 
 
 cat > "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_launcher" <<'EOF'
