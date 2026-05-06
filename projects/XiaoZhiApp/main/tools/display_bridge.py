@@ -62,29 +62,28 @@ for p in _EMOJI_FONT_SEARCH:
 
 print(json.dumps({"event": "font", "text": f"text_font={_font_path} emoji_font={_emoji_font_path}"}), flush=True)
 
-_status_font = ImageFont.truetype(_font_path, 22)
-_text_font = ImageFont.truetype(_font_path, 20)
-_code_font = ImageFont.truetype(_font_path, 44)
-_small_font = ImageFont.truetype(_font_path, 16)
+_status_font = ImageFont.truetype(_font_path, 18)
+_text_font = ImageFont.truetype(_font_path, 16)
+_code_font = ImageFont.truetype(_font_path, 34)
+_small_font = ImageFont.truetype(_font_path, 14)
 
 
 def _load_emoji_font(path, fallback_path):
     # Some emoji fonts (e.g. NotoColorEmoji) only support specific pixel sizes.
-    for size in (40, 48, 32, 24, 20, 16, 109, 128):
+    for size in (28, 32, 24, 20, 16, 40, 48, 109, 128):
         try:
             return ImageFont.truetype(path, size)
         except OSError:
             continue
     # Final fallback: use the normal CJK font, never fail process startup.
-    return ImageFont.truetype(fallback_path, 40)
+    return ImageFont.truetype(fallback_path, 28)
 
 
 _emoji_font = _load_emoji_font(_emoji_font_path, _font_path)
 
 
 def img_to_rgb565(img):
-    """Convert PIL RGBA image to raw RGB565 bytes, line by line.
-    Uses nearest-neighbor sampling (no dithering) for crisp text."""
+    """Convert PIL RGBA image to raw RGB565 bytes, little-endian."""
     data = bytearray()
     pixels = img.load()
     for y in range(img.height):
@@ -95,10 +94,6 @@ def img_to_rgb565(img):
             rgb565 = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
             data.extend(struct.pack("<H", rgb565))
     return bytes(data)
-
-
-def rgb_to_hex565(r, g, b):
-    return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
 
 
 # ---- state colors ----
@@ -114,6 +109,7 @@ STATE_COLORS = {
 # ---- framebuffer device ----
 _fb_fd = None
 _fb_size = 0
+_last_frame_key = None
 
 
 def fb_open():
@@ -131,6 +127,12 @@ def fb_write(rgb565_data):
 
 def render_frame(status, emoji, text, code):
     """Render a full frame and write to framebuffer."""
+    global _last_frame_key
+    frame_key = (status, emoji, text, code)
+    if frame_key == _last_frame_key:
+        return
+    _last_frame_key = frame_key
+
     img = Image.new("RGBA", (WIDTH, HEIGHT), (220, 225, 235, 255))
     draw = ImageDraw.Draw(img, "RGBA")
 
@@ -141,33 +143,37 @@ def render_frame(status, emoji, text, code):
     draw.rectangle([0, 0, WIDTH, header_h], fill=(color[0], color[1], color[2], 255))
 
     # Title
-    draw.text((14, 4), "XIAOZHI", font=_status_font, fill=(255, 255, 255, 255))
+    draw.text((14, 7), "XIAOZHI", font=_status_font, fill=(255, 255, 255, 255))
 
     # Emoji
     bbox = _emoji_font.getbbox(emoji)
     ew = bbox[2] - bbox[0]
-    draw.text((WIDTH - ew - 16, 0), emoji, font=_emoji_font, fill=(255, 255, 220, 255))
+    ex = WIDTH - ew - 14
+    ey = 4
+    # Add a darker bubble so color emoji never looks washed out on the header.
+    draw.ellipse([ex - 6, ey - 2, ex + ew + 6, ey + 30], fill=(20, 28, 40, 220))
+    draw.text((ex, ey), emoji, font=_emoji_font, fill=(255, 255, 255, 255))
 
     # Status label
-    draw.text((14, 44), status, font=_status_font, fill=(20, 20, 40, 255))
+    draw.text((14, 43), status, font=_status_font, fill=(20, 20, 40, 255))
 
     # Content area
     if status == "BINDING":
-        draw.text((18, 70), "Open XiaoZhi app to bind", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((18, 67), "Open XiaoZhi app to bind", font=_small_font, fill=(80, 80, 120, 255))
         if code and len(code) == 6:
             bbox = _code_font.getbbox(code)
             cw = bbox[2] - bbox[0]
-            draw.text(((WIDTH - cw) // 2, 94), code, font=_code_font, fill=(20, 20, 50, 255))
+            draw.text(((WIDTH - cw) // 2, 92), code, font=_code_font, fill=(20, 20, 50, 255))
     elif status == "IDLE":
-        draw.text((18, 70), "SPACE to talk", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((18, 67), "SPACE to talk", font=_small_font, fill=(80, 80, 120, 255))
     elif status == "LISTENING":
-        draw.text((18, 70), "Listening...", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((18, 67), "Listening...", font=_small_font, fill=(80, 80, 120, 255))
     elif status == "THINKING":
-        draw.text((18, 70), "Thinking...", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((18, 67), "Thinking...", font=_small_font, fill=(80, 80, 120, 255))
     elif status == "SPEAKING":
-        draw.text((18, 70), "Speaking...", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((18, 67), "Speaking...", font=_small_font, fill=(80, 80, 120, 255))
     elif status == "ERROR":
-        draw.text((18, 70), "ERROR", font=_small_font, fill=(200, 40, 40, 255))
+        draw.text((18, 67), "ERROR", font=_small_font, fill=(200, 40, 40, 255))
 
     # Bottom status bar
     bar_y = HEIGHT - 38
