@@ -14,6 +14,8 @@ import os
 import json
 import struct
 import traceback
+import select
+import time
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -128,6 +130,8 @@ STATE_COLORS = {
 _fb_fd = None
 _fb_size = 0
 _last_frame_key = None
+_scroll_text_key = None
+_scroll_start_ts = 0.0
 
 
 def fb_open():
@@ -145,12 +149,7 @@ def fb_write(rgb565_data):
 
 def render_frame(status, emoji, text, code):
     """Render a full frame and write to framebuffer."""
-    global _last_frame_key
-    frame_key = (status, emoji, text, code)
-    if frame_key == _last_frame_key:
-        return
-    _last_frame_key = frame_key
-
+    global _last_frame_key, _scroll_text_key, _scroll_start_ts
     img = Image.new("RGBA", (WIDTH, HEIGHT), (220, 225, 235, 255))
     draw = ImageDraw.Draw(img, "RGBA")
 
@@ -165,7 +164,7 @@ def render_frame(status, emoji, text, code):
 
     # Emoji
     emoji = _normalize_emoji(emoji)
-    emoji_target = 22
+    emoji_target = 29
     if _emoji_use_embedded:
         # Render color glyph then resize with alpha-safe nearest sampling to avoid dark fringes.
         scratch = Image.new("RGBA", (160, 160), (0, 0, 0, 0))
@@ -179,15 +178,15 @@ def render_frame(status, emoji, text, code):
             th = max(emoji_target, int(emoji_target * max(0.6, ratio)))
             eg = eg.resize((tw, th), Image.Resampling.NEAREST)
             ex = WIDTH - eg.width - 14
-            ey = 6
+            ey = header_h + 6
             img.alpha_composite(eg, (ex, ey))
         else:
-            draw.text((WIDTH - 30, 7), emoji, font=_text_font, fill=(255, 255, 255, 255))
+            draw.text((WIDTH - 30, header_h + 6), emoji, font=_text_font, fill=(255, 255, 255, 255))
     else:
         bbox = _emoji_font.getbbox(emoji)
         ew = bbox[2] - bbox[0]
         ex = WIDTH - ew - 14
-        ey = 7
+        ey = header_h + 6
         draw.text((ex, ey), emoji, font=_emoji_font, fill=(255, 255, 255, 255))
 
     # Status label
@@ -215,7 +214,36 @@ def render_frame(status, emoji, text, code):
     bar_y = HEIGHT - 38
     draw.rectangle([0, bar_y, WIDTH, HEIGHT], fill=(50, 55, 70, 255))
     if text:
-        draw.text((8, bar_y + 8), text, font=_text_font, fill=(220, 225, 240, 255))
+        x0 = 8
+        y0 = bar_y + 8
+        avail_w = WIDTH - 16
+        tb = _text_font.getbbox(text)
+        text_w = max(0, tb[2] - tb[0])
+        if text_w <= avail_w:
+            draw.text((x0, y0), text, font=_text_font, fill=(220, 225, 240, 255))
+            scroll_bucket = 0
+        else:
+            text_key = (status, text)
+            if text_key != _scroll_text_key:
+                _scroll_text_key = text_key
+                _scroll_start_ts = time.monotonic()
+            speed = 42.0  # px/s
+            max_shift = text_w - avail_w
+            elapsed = max(0.0, time.monotonic() - _scroll_start_ts)
+            shift = min(max_shift, int(elapsed * speed))
+            x = x0 - shift
+            draw.text((x, y0), text, font=_text_font, fill=(220, 225, 240, 255))
+            scroll_bucket = shift
+    else:
+        _scroll_text_key = None
+        scroll_bucket = 0
+
+    frame_key = (status, emoji, text, code, scroll_bucket)
+    global _last_frame_key
+    if frame_key == _last_frame_key:
+        img.close()
+        return
+    _last_frame_key = frame_key
 
     # Write to framebuffer
     data = img_to_rgb565(img)
@@ -229,27 +257,50 @@ def main():
     fb_open()
     print(json.dumps({"event": "connected"}), flush=True)
 
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            cmd = json.loads(line)
-        except json.JSONDecodeError:
-            print(f"[display-bridge] parse error: {line[:80]}", file=sys.stderr, flush=True)
-            continue
+    current = {
+        "status": "IDLE",
+        "emoji": "😄",
+        "text": "",
+        "code": "",
+        "has_frame": False,
+    }
 
-        if cmd.get("cmd") == "quit":
-            break
-
-        if cmd.get("cmd") == "render":
+    while True:
+        readable, _, _ = select.select([sys.stdin], [], [], 0.08)
+        if readable:
+            line = sys.stdin.readline()
+            if not line:
+                break
+            line = line.strip()
+            if not line:
+                continue
             try:
-                status = cmd.get("status", "IDLE")
-                emoji = cmd.get("emoji", "😄")
-                text = cmd.get("text", "")
-                code = cmd.get("code", "")
-                print(f"[display-bridge] render status={status} emoji={emoji} text={text[:30]}", file=sys.stderr, flush=True)
-                render_frame(status, emoji, text, code)
+                cmd = json.loads(line)
+            except json.JSONDecodeError:
+                print(f"[display-bridge] parse error: {line[:80]}", file=sys.stderr, flush=True)
+                continue
+
+            if cmd.get("cmd") == "quit":
+                break
+
+            if cmd.get("cmd") == "render":
+                try:
+                    current["status"] = cmd.get("status", "IDLE")
+                    current["emoji"] = cmd.get("emoji", "😄")
+                    current["text"] = cmd.get("text", "")
+                    current["code"] = cmd.get("code", "")
+                    current["has_frame"] = True
+                    print(
+                        f"[display-bridge] render status={current['status']} emoji={current['emoji']} text={current['text'][:30]}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                except Exception:
+                    traceback.print_exc(file=sys.stderr)
+
+        if current["has_frame"]:
+            try:
+                render_frame(current["status"], current["emoji"], current["text"], current["code"])
             except Exception:
                 traceback.print_exc(file=sys.stderr)
 
