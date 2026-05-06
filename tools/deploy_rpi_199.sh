@@ -6,7 +6,7 @@ REMOTE="${REMOTE:-pi@192.168.100.199}"
 REMOTE_DIR="${REMOTE_DIR:-/home/pi/cardputer-xiaozhi-device}"
 REMOTE_TMP="${REMOTE_TMP:-/tmp/xiaozhi-applaunch_0.1-m5stack1_arm64.deb}"
 
-ssh "$REMOTE" "echo pi | sudo -S sh -c 'if [ -f /etc/apt/apt.conf ]; then cp /etc/apt/apt.conf /etc/apt/apt.conf.xiaozhi.bak; cat /dev/null >/etc/apt/apt.conf; fi; apt-get update; apt-get install -y libsdl2-dev libsdl2-2.0-0 python3-pip curl libasound2; if [ -f /etc/apt/apt.conf.xiaozhi.bak ]; then mv /etc/apt/apt.conf.xiaozhi.bak /etc/apt/apt.conf; fi'"
+ssh "$REMOTE" "echo pi | sudo -S sh -c 'if [ -f /etc/apt/apt.conf ]; then cp /etc/apt/apt.conf /etc/apt/apt.conf.xiaozhi.bak; cat /dev/null >/etc/apt/apt.conf; fi; need_install=0; for p in libsdl2-dev libsdl2-ttf-dev fonts-noto-cjk fonts-noto-color-emoji python3-pip; do dpkg -s \$p >/dev/null 2>&1 || need_install=1; done; if [ \$need_install -eq 1 ]; then apt-get update && apt-get install -y libsdl2-dev libsdl2-ttf-dev fonts-noto-cjk fonts-noto-color-emoji python3-pip; fi; if [ -f /etc/apt/apt.conf.xiaozhi.bak ]; then mv /etc/apt/apt.conf.xiaozhi.bak /etc/apt/apt.conf; fi'"
 ssh "$REMOTE" "echo pi | sudo -S pip3 install --break-system-packages websockets opuslib"
 ssh "$REMOTE" "mkdir -p /tmp/xiaozhi_logs"
 ssh "$REMOTE" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR/projects'"

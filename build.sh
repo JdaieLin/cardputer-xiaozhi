@@ -26,8 +26,27 @@ fi
 cd "$PROJECT_DIR"
 
 resolve_sdl_flags() {
+	resolve_sdl_pkg_flags() {
+		local module="$1"
+		if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists "$module"; then
+			echo "$(pkg-config --cflags --libs "$module")"
+			return 0
+		fi
+		return 1
+	}
+
 	if command -v sdl2-config >/dev/null 2>&1; then
-		echo "$(sdl2-config --cflags --libs)"
+		local sdl2_flags
+		sdl2_flags="$(sdl2-config --cflags --libs)"
+		if resolve_sdl_pkg_flags sdl2_ttf >/dev/null 2>&1; then
+			echo "$sdl2_flags $(resolve_sdl_pkg_flags sdl2_ttf)"
+			return 0
+		fi
+		if resolve_sdl_pkg_flags SDL2_ttf >/dev/null 2>&1; then
+			echo "$sdl2_flags $(resolve_sdl_pkg_flags SDL2_ttf)"
+			return 0
+		fi
+		echo "$sdl2_flags"
 		return 0
 	fi
 
@@ -39,7 +58,17 @@ resolve_sdl_flags() {
 	done
 
 	if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists sdl2; then
-		echo "$(pkg-config --cflags --libs sdl2)"
+		local sdl2_flags
+		sdl2_flags="$(pkg-config --cflags --libs sdl2)"
+		if pkg-config --exists sdl2_ttf; then
+			echo "$sdl2_flags $(pkg-config --cflags --libs sdl2_ttf)"
+			return 0
+		fi
+		if pkg-config --exists SDL2_ttf; then
+			echo "$sdl2_flags $(pkg-config --cflags --libs SDL2_ttf)"
+			return 0
+		fi
+		echo "$sdl2_flags"
 		return 0
 	fi
 
@@ -103,9 +132,9 @@ elif [[ "$TARGET" == "device" ]]; then
 		main/src/audio_pipeline.cpp \
 		main/src/audio_pipeline_sdl.cpp \
 		main/src/config.cpp \
-		main/src/hal_sdl.cpp \
+		main/src/display_bridge.cpp \
+		main/src/hal_evdev.cpp \
 		main/src/ota_client.cpp \
-		main/src/ui_fbdev.cpp \
 		main/src/ws_client.cpp \
 		main/src/main_device.cpp \
 		${SDL_FLAGS} \

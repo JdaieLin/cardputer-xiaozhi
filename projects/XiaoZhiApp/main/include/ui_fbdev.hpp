@@ -28,6 +28,7 @@ private:
     void fillRect(int x, int y, int w, int h, uint16_t color);
     void drawGlyph(int x, int y, const uint8_t* glyph, int scale, uint16_t color);
     void drawText(int x, int y, const std::string& text, int scale, uint16_t color);
+    void drawEmoji(int x, int y, int scale, AppState state, const std::string& emoji);
 
     static uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b);
     static uint16_t stateColor(AppState state);

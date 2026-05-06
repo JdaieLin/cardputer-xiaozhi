@@ -6,8 +6,8 @@
 
 #include "application.hpp"
 #include "audio_pipeline_sdl.hpp"
-#include "hal_sdl.hpp"
-#include "ui_fbdev.hpp"
+#include "display_bridge.hpp"
+#include "hal_evdev.hpp"
 
 namespace {
 volatile sig_atomic_t g_running = 1;
@@ -31,8 +31,8 @@ int main() {
 
     xiaozhi::Application app(
         config,
-        std::make_unique<xiaozhi::HalSdl>(),
-        std::make_unique<xiaozhi::UiFbdev>(),
+        std::make_unique<xiaozhi::HalEvdev>(),
+        std::make_unique<xiaozhi::DisplayBridge>(),
         std::make_unique<xiaozhi::WsClientBridge>(),
         std::make_unique<xiaozhi::AudioPipelineSdl>());
 

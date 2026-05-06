@@ -137,13 +137,19 @@ void UiFbdev::renderState(AppState state, const std::string& text, const std::st
     const uint16_t white = rgb565(255, 255, 255);
     const uint16_t dim = rgb565(140, 140, 160);
     const uint16_t code_color = rgb565(255, 244, 180);
+    const uint16_t accent = rgb565(255, 200, 60);
 
     fillRect(0, 0, kWidth, kHeight, bg);
 
     fillRect(0, 0, kWidth, 34, header_bg);
 
     drawText(12, 8, "XIAOZHI", 2, white);
-    drawText(kWidth - 40, 6, emoji.empty() ? "  " : emoji, 2, white);
+
+    std::string emoji_str;
+    if (!emoji.empty()) {
+        emoji_str = emoji;
+    }
+    drawEmoji(kWidth - 42, 5, 2, state, emoji_str);
 
     const char* label = stateLabel(state);
     drawText(12, 42, label, 2, white);
@@ -221,6 +227,137 @@ void UiFbdev::drawText(int x, int y, const std::string& text, int scale, uint16_
         drawGlyph(cx, y, internalGlyphFor(c), scale, color);
         cx += advance;
         if (cx + advance > kWidth) break;
+    }
+}
+
+namespace {
+
+struct EmojiIcon {
+    int w;
+    int h;
+    const uint8_t* data;
+};
+
+const uint8_t kIconBind[] = {
+    0,0,0,0,1,1,1,0,0,0,0,
+    0,0,0,1,0,0,0,1,0,0,0,
+    0,0,1,0,0,0,0,0,1,0,0,
+    0,1,0,0,0,0,0,0,0,1,0,
+    1,0,0,0,0,0,0,0,0,0,1,
+    1,0,0,0,0,0,0,0,0,0,1,
+    1,0,0,0,1,1,0,0,0,0,1,
+    0,1,0,0,1,1,0,0,0,1,0,
+    0,0,1,0,0,0,0,0,1,0,0,
+    0,0,0,1,0,0,0,1,0,0,0,
+    0,0,0,0,1,1,1,0,0,0,0,
+};
+
+const uint8_t kIconSmile[] = {
+    0,0,0,1,1,1,1,1,0,0,0,
+    0,0,1,0,0,0,0,0,1,0,0,
+    0,1,0,0,0,0,0,0,0,1,0,
+    1,0,1,0,0,0,0,1,0,0,1,
+    1,0,0,0,0,0,0,0,0,0,1,
+    1,0,0,0,0,0,0,0,0,0,1,
+    1,0,1,0,0,0,0,1,0,0,1,
+    0,1,0,0,0,0,0,0,0,1,0,
+    0,0,1,0,0,0,0,0,1,0,0,
+    0,0,0,1,0,1,0,1,0,0,0,
+    0,0,0,0,1,1,1,0,0,0,0,
+};
+
+const uint8_t kIconMic[] = {
+    0,0,0,1,1,0,1,1,0,0,0,
+    0,0,0,1,1,0,1,1,0,0,0,
+    0,0,0,1,0,1,0,1,0,0,0,
+    0,0,0,1,0,1,0,1,0,0,0,
+    0,0,0,1,0,0,0,1,0,0,0,
+    0,0,1,1,1,1,1,1,1,0,0,
+    0,1,0,1,1,1,1,1,0,1,0,
+    0,0,0,0,1,1,1,0,0,0,0,
+    0,0,0,0,0,1,0,0,0,0,0,
+    0,0,0,0,0,1,0,0,0,0,0,
+    0,0,0,0,0,1,0,0,0,0,0,
+};
+
+const uint8_t kIconThink[] = {
+    0,0,1,1,1,1,1,1,0,0,0,
+    0,1,0,0,0,0,0,0,1,0,0,
+    1,0,0,0,0,0,0,0,0,1,0,
+    1,0,0,0,0,0,1,0,0,1,0,
+    1,0,0,0,0,1,0,0,0,1,0,
+    1,0,0,0,1,0,0,0,0,1,0,
+    1,0,0,1,0,0,0,0,0,1,0,
+    1,0,0,0,0,0,0,0,0,1,0,
+    0,1,0,0,0,0,0,0,1,0,0,
+    0,0,1,0,0,0,0,1,0,0,0,
+    0,0,0,1,0,0,1,0,0,0,0,
+};
+
+const uint8_t kIconSpeak[] = {
+    0,0,0,0,1,0,0,0,0,0,0,
+    0,0,0,1,1,0,0,0,0,0,0,
+    0,0,0,1,1,1,0,0,0,1,0,
+    0,0,0,1,1,1,1,0,1,0,0,
+    1,1,1,1,1,1,1,1,0,0,0,
+    1,1,1,1,1,1,1,1,0,0,0,
+    0,0,0,1,1,1,1,0,1,0,0,
+    0,0,0,1,1,1,0,0,0,1,0,
+    0,0,0,1,1,0,0,0,0,0,0,
+    0,0,0,0,1,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,
+};
+
+const uint8_t kIconError[] = {
+    1,0,0,0,0,0,0,0,0,0,1,
+    0,1,0,0,0,0,0,0,0,1,0,
+    0,0,1,0,0,0,0,0,1,0,0,
+    0,0,0,1,0,0,0,1,0,0,0,
+    0,0,0,0,1,0,1,0,0,0,0,
+    0,0,0,0,0,1,0,0,0,0,0,
+    0,0,0,0,1,0,1,0,0,0,0,
+    0,0,0,1,0,0,0,1,0,0,0,
+    0,0,1,0,0,0,0,0,1,0,0,
+    0,1,0,0,0,0,0,0,0,1,0,
+    1,0,0,0,0,0,0,0,0,0,1,
+};
+
+const EmojiIcon kIcons[] = {
+    {11, 11, kIconBind},     // AppState::Binding
+    {11, 11, kIconSmile},   // AppState::Idle
+    {11, 11, kIconMic},     // AppState::Listening
+    {11, 11, kIconThink},   // AppState::Thinking
+    {11, 11, kIconSpeak},   // AppState::Speaking
+    {11, 11, kIconError},   // AppState::Error
+};
+
+}  // namespace
+
+void UiFbdev::drawEmoji(int x, int y, int scale, AppState state, const std::string& emoji) {
+    uint16_t color;
+    switch (state) {
+        case AppState::Binding:   color = rgb565(60, 180, 255); break;
+        case AppState::Idle:      color = rgb565(100, 220, 100); break;
+        case AppState::Listening: color = rgb565(255, 60, 60); break;
+        case AppState::Thinking:  color = rgb565(255, 220, 40); break;
+        case AppState::Speaking:  color = rgb565(220, 80, 180); break;
+        case AppState::Error:     color = rgb565(255, 50, 50); break;
+    }
+
+    int icon_idx = static_cast<int>(state);
+    if (icon_idx < 0 || icon_idx >= 6) icon_idx = 1;
+
+    const auto& icon = kIcons[icon_idx];
+
+    for (int row = 0; row < icon.h; ++row) {
+        for (int col = 0; col < icon.w; ++col) {
+            if (icon.data[row * icon.w + col] == 0) continue;
+            for (int sy = 0; sy < scale; ++sy) {
+                for (int sx = 0; sx < scale; ++sx) {
+                    setPixel(x + col * scale + sx, y + row * scale + sy, color);
+                }
+            }
+        }
     }
 }
 

@@ -23,17 +23,36 @@ mkdir -p \
 
 install -m 0755 "$BIN" "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_app"
 install -m 0644 "$PROJECT_DIR/main/tools/ws_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/ws_bridge.py"
+install -m 0644 "$PROJECT_DIR/main/tools/display_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/display_bridge.py"
+
 
 cat > "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_launcher" <<'EOF'
 #!/usr/bin/env sh
 export XIAOZHI_WS_BRIDGE=/usr/share/APPLaunch/share/xiaozhi/ws_bridge.py
 export SDL_AUDIODRIVER=alsa
-export SDL_VIDEODRIVER=dummy
-export XIAOZHI_FBDEV=/dev/fb0
+detect_fbdev() {
+	if [ -n "${APPLAUNCH_LINUX_FBDEV_DEVICE:-}" ]; then
+		echo "$APPLAUNCH_LINUX_FBDEV_DEVICE"
+		return 0
+	fi
+	if [ -r /proc/fb ]; then
+		fb_idx="$(awk '/fb_st7789v/ {print $1; exit}' /proc/fb 2>/dev/null || true)"
+		if [ -n "$fb_idx" ]; then
+			echo "/dev/fb$fb_idx"
+			return 0
+		fi
+	fi
+	echo "/dev/fb0"
+}
+export XIAOZHI_FBDEV="$(detect_fbdev)"
+export XIAOZHI_KEYBOARD_DEVICE="${APPLAUNCH_LINUX_KEYBOARD_DEVICE:-/dev/input/by-path/platform-3f804000.i2c-event}"
 LOG_DIR="/tmp/xiaozhi_logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/xiaozhi_$(date +%Y%m%d_%H%M%S).log"
-exec /usr/share/APPLaunch/bin/xiaozhi_app >>"$LOG_FILE" 2>&1
+{
+	echo "[launcher] fbdev=$XIAOZHI_FBDEV keyboard=$XIAOZHI_KEYBOARD_DEVICE"
+	exec /usr/share/APPLaunch/bin/xiaozhi_app
+} >>"$LOG_FILE" 2>&1
 EOF
 chmod 0755 "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_launcher"
 

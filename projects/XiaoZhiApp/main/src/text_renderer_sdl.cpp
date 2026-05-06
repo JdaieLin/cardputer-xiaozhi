@@ -1,64 +1,108 @@
 #include "text_renderer_sdl.hpp"
 
+#include <SDL_ttf.h>
+
 #include <algorithm>
-#include <cctype>
 #include <cstdint>
+#include <map>
 #include <string>
+#include <vector>
 
 namespace xiaozhi {
 namespace {
 
-constexpr int kGlyphW = 5;
-constexpr int kGlyphH = 7;
-
-const uint8_t* glyphFor(char c) {
-    static const uint8_t kUnknown[kGlyphH] = {0x1f, 0x11, 0x15, 0x15, 0x15, 0x11, 0x1f};
-    static const uint8_t kSpace[kGlyphH] = {0, 0, 0, 0, 0, 0, 0};
-    static const uint8_t kColon[kGlyphH] = {0, 0x04, 0x04, 0, 0x04, 0x04, 0};
-    static const uint8_t kDash[kGlyphH] = {0, 0, 0, 0x1f, 0, 0, 0};
-    static const uint8_t kDot[kGlyphH] = {0, 0, 0, 0, 0, 0x0c, 0x0c};
-    static const uint8_t kSlash[kGlyphH] = {0x01, 0x02, 0x04, 0x08, 0x10, 0, 0};
-    static const uint8_t kDigits[10][kGlyphH] = {
-        {0x0e, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0e},
-        {0x04, 0x0c, 0x04, 0x04, 0x04, 0x04, 0x0e},
-        {0x0e, 0x11, 0x01, 0x06, 0x08, 0x10, 0x1f},
-        {0x1f, 0x01, 0x06, 0x01, 0x01, 0x11, 0x0e},
-        {0x02, 0x06, 0x0a, 0x12, 0x1f, 0x02, 0x02},
-        {0x1f, 0x10, 0x1e, 0x01, 0x01, 0x11, 0x0e},
-        {0x0e, 0x10, 0x1e, 0x11, 0x11, 0x11, 0x0e},
-        {0x1f, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08},
-        {0x0e, 0x11, 0x11, 0x0e, 0x11, 0x11, 0x0e},
-        {0x0e, 0x11, 0x11, 0x0f, 0x01, 0x02, 0x1c},
-    };
-    static const uint8_t kUpper[26][kGlyphH] = {
-        {0x04, 0x0a, 0x11, 0x11, 0x1f, 0x11, 0x11}, {0x1e, 0x11, 0x11, 0x1e, 0x11, 0x11, 0x1e},
-        {0x0e, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0e}, {0x1c, 0x12, 0x11, 0x11, 0x11, 0x12, 0x1c},
-        {0x1f, 0x10, 0x10, 0x1e, 0x10, 0x10, 0x1f}, {0x1f, 0x10, 0x10, 0x1e, 0x10, 0x10, 0x10},
-        {0x0e, 0x11, 0x10, 0x10, 0x13, 0x11, 0x0e}, {0x11, 0x11, 0x11, 0x1f, 0x11, 0x11, 0x11},
-        {0x0e, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0e}, {0x07, 0x02, 0x02, 0x02, 0x12, 0x12, 0x0c},
-        {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11}, {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1f},
-        {0x11, 0x1b, 0x15, 0x15, 0x11, 0x11, 0x11}, {0x11, 0x19, 0x15, 0x13, 0x11, 0x11, 0x11},
-        {0x0e, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e}, {0x1e, 0x11, 0x11, 0x1e, 0x10, 0x10, 0x10},
-        {0x0e, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0d}, {0x1e, 0x11, 0x11, 0x1e, 0x14, 0x12, 0x11},
-        {0x0f, 0x10, 0x10, 0x0e, 0x01, 0x01, 0x1e}, {0x1f, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04},
-        {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0e}, {0x11, 0x11, 0x11, 0x11, 0x11, 0x0a, 0x04},
-        {0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0a}, {0x11, 0x11, 0x0a, 0x04, 0x0a, 0x11, 0x11},
-        {0x11, 0x11, 0x0a, 0x04, 0x04, 0x04, 0x04}, {0x1f, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1f},
-    };
-
-    if (c == ' ') return kSpace;
-    if (c == ':') return kColon;
-    if (c == '-') return kDash;
-    if (c == '.') return kDot;
-    if (c == '/') return kSlash;
-    if (c >= '0' && c <= '9') return kDigits[c - '0'];
-    if (c >= 'a' && c <= 'z') c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-    if (c >= 'A' && c <= 'Z') return kUpper[c - 'A'];
-    return kUnknown;
+bool ensureTtfInit() {
+    if (TTF_WasInit() != 0) {
+        return true;
+    }
+    return TTF_Init() == 0;
 }
 
-bool isAsciiPrintable(char c) {
-    return static_cast<unsigned char>(c) >= 32 && static_cast<unsigned char>(c) <= 126;
+uint32_t nextCodepoint(const std::string& s, size_t& i) {
+    if (i >= s.size()) {
+        return 0;
+    }
+    const unsigned char c0 = static_cast<unsigned char>(s[i++]);
+    if ((c0 & 0x80) == 0) {
+        return c0;
+    }
+    if ((c0 & 0xE0) == 0xC0 && i < s.size()) {
+        const unsigned char c1 = static_cast<unsigned char>(s[i++]);
+        return ((c0 & 0x1F) << 6) | (c1 & 0x3F);
+    }
+    if ((c0 & 0xF0) == 0xE0 && i + 1 < s.size()) {
+        const unsigned char c1 = static_cast<unsigned char>(s[i++]);
+        const unsigned char c2 = static_cast<unsigned char>(s[i++]);
+        return ((c0 & 0x0F) << 12) | ((c1 & 0x3F) << 6) | (c2 & 0x3F);
+    }
+    if ((c0 & 0xF8) == 0xF0 && i + 2 < s.size()) {
+        const unsigned char c1 = static_cast<unsigned char>(s[i++]);
+        const unsigned char c2 = static_cast<unsigned char>(s[i++]);
+        const unsigned char c3 = static_cast<unsigned char>(s[i++]);
+        return ((c0 & 0x07) << 18) | ((c1 & 0x3F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F);
+    }
+    return '?';
+}
+
+bool hasEmojiCodepoint(const std::string& text) {
+    size_t i = 0;
+    while (i < text.size()) {
+        const uint32_t cp = nextCodepoint(text, i);
+        if ((cp >= 0x1F300 && cp <= 0x1FAFF) || (cp >= 0x2600 && cp <= 0x27BF)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+struct FontKey {
+    std::string path;
+    int size = 0;
+    int style = 0;
+    bool operator<(const FontKey& other) const {
+        if (path != other.path) return path < other.path;
+        if (size != other.size) return size < other.size;
+        return style < other.style;
+    }
+};
+
+TTF_Font* getFont(const std::vector<std::string>& paths, int px, bool bold) {
+    static std::map<FontKey, TTF_Font*> cache;
+    const int style = bold ? TTF_STYLE_BOLD : TTF_STYLE_NORMAL;
+
+    for (const std::string& path : paths) {
+        FontKey key{path, px, style};
+        auto it = cache.find(key);
+        if (it != cache.end()) {
+            return it->second;
+        }
+
+        TTF_Font* font = TTF_OpenFont(path.c_str(), px);
+        if (font == nullptr) {
+            continue;
+        }
+        TTF_SetFontStyle(font, style);
+        cache.emplace(key, font);
+        return font;
+    }
+    return nullptr;
+}
+
+std::vector<std::string> normalFontCandidates() {
+    return {
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKSC-Regular.otf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/noto/NotoSansSC-Regular.otf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    };
+}
+
+std::vector<std::string> emojiFontCandidates() {
+    return {
+        "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
+        "/usr/share/fonts/truetype/ancient-scripts/Symbola_hint.ttf",
+    };
 }
 
 }  // namespace
@@ -67,62 +111,49 @@ bool drawSdlText(SDL_Renderer* renderer, const SDL_Rect& rect, const std::string
     if (renderer == nullptr || rect.w <= 0 || rect.h <= 0 || text.empty()) {
         return false;
     }
+    if (!ensureTtfInit()) {
+        return false;
+    }
 
-    const int scale = std::max(1, static_cast<int>(style.point_size / 8.0f));
-    const int advance = (kGlyphW + 1) * scale;
-    const int line_h = (kGlyphH + 2) * scale;
+    const int point_size = std::max(10, static_cast<int>(style.point_size));
+    TTF_Font* font = nullptr;
+    if (hasEmojiCodepoint(text)) {
+        font = getFont(emojiFontCandidates(), point_size, style.bold);
+    }
+    if (font == nullptr) {
+        font = getFont(normalFontCandidates(), point_size, style.bold);
+    }
+    if (font == nullptr) {
+        return false;
+    }
 
-    int x = rect.x;
-    int y = rect.y;
+    SDL_Surface* surface = nullptr;
+    if (style.wrap) {
+        surface = TTF_RenderUTF8_Blended_Wrapped(font, text.c_str(), style.color, static_cast<Uint32>(rect.w));
+    } else {
+        surface = TTF_RenderUTF8_Blended(font, text.c_str(), style.color);
+    }
+    if (surface == nullptr) {
+        return false;
+    }
+
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+    if (texture == nullptr) {
+        SDL_FreeSurface(surface);
+        return false;
+    }
+
+    SDL_Rect dst = {rect.x, rect.y, surface->w, surface->h};
     if (style.center) {
-        const int text_w = static_cast<int>(text.size()) * advance;
-        x = rect.x + std::max(0, (rect.w - text_w) / 2);
+        dst.x = rect.x + std::max(0, (rect.w - surface->w) / 2);
     }
+    dst.y = rect.y + std::max(0, (rect.h - surface->h) / 2);
+    dst.w = std::min(dst.w, rect.w);
+    dst.h = std::min(dst.h, rect.h);
 
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(renderer, style.color.r, style.color.g, style.color.b, style.color.a);
-
-    for (size_t i = 0; i < text.size(); ++i) {
-        char c = text[i];
-        if (!isAsciiPrintable(c)) {
-            c = '?';
-        }
-        if (c == '\n') {
-            x = rect.x;
-            y += line_h;
-            if (y + line_h > rect.y + rect.h) {
-                break;
-            }
-            continue;
-        }
-
-        if (style.wrap && x + advance > rect.x + rect.w) {
-            x = rect.x;
-            y += line_h;
-            if (y + line_h > rect.y + rect.h) {
-                break;
-            }
-        }
-
-        const uint8_t* glyph = glyphFor(c);
-        for (int row = 0; row < kGlyphH; ++row) {
-            for (int col = 0; col < kGlyphW; ++col) {
-                if (((glyph[row] >> (kGlyphW - 1 - col)) & 0x01) == 0) {
-                    continue;
-                }
-                SDL_Rect px = {x + col * scale, y + row * scale, scale, scale};
-                SDL_RenderFillRect(renderer, &px);
-                if (style.bold) {
-                    SDL_Rect px2 = {px.x + 1, px.y, scale, scale};
-                    SDL_RenderFillRect(renderer, &px2);
-                }
-            }
-        }
-        x += advance;
-        if (!style.wrap && x > rect.x + rect.w) {
-            break;
-        }
-    }
+    SDL_RenderCopy(renderer, texture, nullptr, &dst);
+    SDL_DestroyTexture(texture);
+    SDL_FreeSurface(surface);
     return true;
 }
 
