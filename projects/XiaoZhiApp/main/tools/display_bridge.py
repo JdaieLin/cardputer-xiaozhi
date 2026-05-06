@@ -55,10 +55,11 @@ if not _font_path:
     sys.exit(1)
 
 _emoji_font_path = _font_path
-for p in _EMOJI_FONT_SEARCH:
-    if os.path.exists(p):
-        _emoji_font_path = p
-        break
+if os.environ.get("XIAOZHI_USE_COLOR_EMOJI", "1") == "1":
+    for p in _EMOJI_FONT_SEARCH:
+        if os.path.exists(p):
+            _emoji_font_path = p
+            break
 
 print(json.dumps({"event": "font", "text": f"text_font={_font_path} emoji_font={_emoji_font_path}"}), flush=True)
 
@@ -70,16 +71,33 @@ _small_font = ImageFont.truetype(_font_path, 14)
 
 def _load_emoji_font(path, fallback_path):
     # Some emoji fonts (e.g. NotoColorEmoji) only support specific pixel sizes.
-    for size in (28, 32, 24, 20, 16, 40, 48, 109, 128):
+    for size in (24, 22, 20, 18, 16, 28, 32, 40, 48, 64, 96, 109, 128):
         try:
-            return ImageFont.truetype(path, size)
+            return ImageFont.truetype(path, size), size
         except OSError:
             continue
     # Final fallback: use the normal CJK font, never fail process startup.
-    return ImageFont.truetype(fallback_path, 28)
+    return ImageFont.truetype(fallback_path, 22), 22
 
 
-_emoji_font = _load_emoji_font(_emoji_font_path, _font_path)
+_emoji_font, _emoji_font_px = _load_emoji_font(_emoji_font_path, _font_path)
+_emoji_use_embedded = "NotoColorEmoji" in _emoji_font_path
+print(
+    json.dumps(
+        {
+            "event": "emoji",
+            "text": f"embedded={int(_emoji_use_embedded)} px={_emoji_font_px} path={_emoji_font_path}",
+        }
+    ),
+    flush=True,
+)
+
+
+def _normalize_emoji(s):
+    if not s:
+        return "😄"
+    # Strip text/emoji variation selectors; they can cause fallback glyph artifacts on some stacks.
+    return s.replace("\ufe0f", "").replace("\ufe0e", "")
 
 
 def img_to_rgb565(img):
@@ -146,13 +164,31 @@ def render_frame(status, emoji, text, code):
     draw.text((14, 7), "XIAOZHI", font=_status_font, fill=(255, 255, 255, 255))
 
     # Emoji
-    bbox = _emoji_font.getbbox(emoji)
-    ew = bbox[2] - bbox[0]
-    ex = WIDTH - ew - 14
-    ey = 4
-    # Add a darker bubble so color emoji never looks washed out on the header.
-    draw.ellipse([ex - 6, ey - 2, ex + ew + 6, ey + 30], fill=(20, 28, 40, 220))
-    draw.text((ex, ey), emoji, font=_emoji_font, fill=(255, 255, 255, 255))
+    emoji = _normalize_emoji(emoji)
+    emoji_target = 22
+    if _emoji_use_embedded:
+        # Render color glyph then resize with alpha-safe nearest sampling to avoid dark fringes.
+        scratch = Image.new("RGBA", (160, 160), (0, 0, 0, 0))
+        sdraw = ImageDraw.Draw(scratch, "RGBA")
+        sdraw.text((0, 0), emoji, font=_emoji_font, embedded_color=True)
+        eb = scratch.getbbox()
+        if eb is not None:
+            eg = scratch.crop(eb)
+            ratio = eg.height / max(1, eg.width)
+            tw = max(emoji_target, int(emoji_target / max(0.6, ratio)))
+            th = max(emoji_target, int(emoji_target * max(0.6, ratio)))
+            eg = eg.resize((tw, th), Image.Resampling.NEAREST)
+            ex = WIDTH - eg.width - 14
+            ey = 6
+            img.alpha_composite(eg, (ex, ey))
+        else:
+            draw.text((WIDTH - 30, 7), emoji, font=_text_font, fill=(255, 255, 255, 255))
+    else:
+        bbox = _emoji_font.getbbox(emoji)
+        ew = bbox[2] - bbox[0]
+        ex = WIDTH - ew - 14
+        ey = 7
+        draw.text((ex, ey), emoji, font=_emoji_font, fill=(255, 255, 255, 255))
 
     # Status label
     draw.text((14, 43), status, font=_status_font, fill=(20, 20, 40, 255))
