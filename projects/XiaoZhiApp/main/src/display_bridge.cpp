@@ -171,6 +171,10 @@ bool DisplayBridge::init() {
             if (line.find("\"connected\"") != std::string::npos) {
                 std::cout << "[display-bridge] handshake ready" << std::endl;
                 connected_ = true;
+                // Restore blocking mode so the drain thread can actually wait for data.
+                if (flags >= 0) {
+                    fcntl(child_stdout_fd_, F_SETFL, flags & ~O_NONBLOCK);
+                }
                 // Drain child stdout/stderr pipe in background to prevent pipe-buffer deadlock.
                 std::thread([fd = child_stdout_fd_]() {
                     char buf[512];

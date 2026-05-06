@@ -150,7 +150,13 @@ def fb_write(rgb565_data):
     global _fb_fd
     if _fb_fd is not None:
         os.lseek(_fb_fd, 0, os.SEEK_SET)
-        os.write(_fb_fd, rgb565_data[:_fb_size])
+        data = rgb565_data[:_fb_size]
+        total = 0
+        while total < len(data):
+            n = os.write(_fb_fd, data[total:])
+            if n <= 0:
+                break
+            total += n
 
 
 def _wrap_text(text, font, max_width):
