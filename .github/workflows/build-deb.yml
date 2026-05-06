@@ -1,0 +1,76 @@
+name: Build deb
+
+on:
+  push:
+    branches: [main, ci/**]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  arm64:
+    name: Build arm64 deb
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config fakeroot \
+            libsdl2-dev libsdl2-ttf-dev dpkg-dev \
+            fonts-noto-cjk fonts-noto-color-emoji \
+            python3-pip python3-pil
+
+      - name: Build .deb
+        run: chmod +x build.sh tools/package_applaunch.sh && ./build.sh --device --package
+
+      - name: Show deb metadata
+        run: |
+          set -e
+          deb=$(ls projects/XiaoZhiApp/build/xiaozhi-applaunch_*_arm64.deb)
+          echo "=== $deb ==="
+          dpkg-deb -I "$deb"
+          echo "=== contents ==="
+          dpkg-deb -c "$deb" | head -40
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xiaozhi-applaunch-arm64-deb
+          path: projects/XiaoZhiApp/build/xiaozhi-applaunch_*_arm64.deb
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: projects/XiaoZhiApp/build/xiaozhi-applaunch_*_arm64.deb
+
+  prerelease:
+    needs: arm64
+    if: |
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/ci/'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: xiaozhi-applaunch-arm64-deb
+          path: artifacts/
+
+      - name: Generate release tag
+        id: tag
+        run: echo "tag=xiaozhi-$(date +'%Y%m%d-%H%M%S')" >> "$GITHUB_OUTPUT"
+
+      - name: Create prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "XiaoZhi Prerelease ${{ steps.tag.outputs.tag }}"
+          prerelease: true
+          generate_release_notes: true
+          files: artifacts/*.deb
