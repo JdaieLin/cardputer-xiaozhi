@@ -39,7 +39,7 @@ bool Application::start() {
         } else {
             setState(AppState::Thinking, "server text", true);
         }
-        updateDisplayMessage("🗣️ " + msg);
+        updateDisplayMessage(msg);
     });
     ws_->setOnEmotion([this](const std::string& emoji) {
         if (emoji.empty()) {

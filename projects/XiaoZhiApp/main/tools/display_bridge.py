@@ -130,8 +130,14 @@ STATE_COLORS = {
 _fb_fd = None
 _fb_size = 0
 _last_frame_key = None
-_scroll_text_key = None
-_scroll_start_ts = 0.0
+
+# ---- line-wrap state ----
+_line_wrap_lines = []
+_line_wrap_line = 0
+_line_wrap_next_ts = 0.0
+_line_wrap_current_text = ""
+_LINE_SHOW_S = 2.0
+_LINE_EXTEND_S = 1.0
 
 
 def fb_open():
@@ -147,9 +153,31 @@ def fb_write(rgb565_data):
         os.write(_fb_fd, rgb565_data[:_fb_size])
 
 
+def _wrap_text(text, font, max_width):
+    """Wrap text into lines that each fit within max_width using the given font."""
+    if not text:
+        return [""]
+    lines = []
+    current = ""
+    for ch in text:
+        test = current + ch
+        bbox = font.getbbox(test)
+        w = bbox[2] - bbox[0]
+        if w <= max_width:
+            current = test
+        else:
+            if current:
+                lines.append(current)
+            current = ch
+    if current:
+        lines.append(current)
+    return lines or [text]
+
+
 def render_frame(status, emoji, text, code):
     """Render a full frame and write to framebuffer."""
-    global _last_frame_key, _scroll_text_key, _scroll_start_ts
+    global _last_frame_key
+    global _line_wrap_lines, _line_wrap_line, _line_wrap_next_ts, _line_wrap_current_text
     img = Image.new("RGBA", (WIDTH, HEIGHT), (220, 225, 235, 255))
     draw = ImageDraw.Draw(img, "RGBA")
 
@@ -160,7 +188,7 @@ def render_frame(status, emoji, text, code):
     draw.rectangle([0, 0, WIDTH, header_h], fill=(color[0], color[1], color[2], 255))
 
     # Title
-    draw.text((14, 7), "XIAOZHI", font=_status_font, fill=(255, 255, 255, 255))
+    draw.text((8, 7), "XIAOZHI", font=_status_font, fill=(255, 255, 255, 255))
 
     # Emoji
     emoji = _normalize_emoji(emoji)
@@ -177,7 +205,7 @@ def render_frame(status, emoji, text, code):
             tw = max(emoji_target, int(emoji_target / max(0.6, ratio)))
             th = max(emoji_target, int(emoji_target * max(0.6, ratio)))
             eg = eg.resize((tw, th), Image.Resampling.NEAREST)
-            ex = WIDTH - eg.width - 14
+            ex = WIDTH - eg.width - 8
             ey = header_h + 6
             img.alpha_composite(eg, (ex, ey))
         else:
@@ -185,32 +213,32 @@ def render_frame(status, emoji, text, code):
     else:
         bbox = _emoji_font.getbbox(emoji)
         ew = bbox[2] - bbox[0]
-        ex = WIDTH - ew - 14
+        ex = WIDTH - ew - 8
         ey = header_h + 6
         draw.text((ex, ey), emoji, font=_emoji_font, fill=(255, 255, 255, 255))
 
     # Status label
-    draw.text((14, 43), status, font=_status_font, fill=(20, 20, 40, 255))
+    draw.text((8, 43), status, font=_status_font, fill=(20, 20, 40, 255))
 
     # Content area
     if status == "BINDING":
-        draw.text((18, 67), "Open XiaoZhi app to bind", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((8, 67), "Open XiaoZhi app to bind", font=_small_font, fill=(80, 80, 120, 255))
         if code and len(code) == 6:
             bbox = _code_font.getbbox(code)
             cw = bbox[2] - bbox[0]
             draw.text(((WIDTH - cw) // 2, 92), code, font=_code_font, fill=(20, 20, 50, 255))
     elif status == "IDLE":
-        draw.text((18, 67), "SPACE to talk", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((8, 67), "SPACE to talk", font=_small_font, fill=(80, 80, 120, 255))
     elif status == "LISTENING":
-        draw.text((18, 67), "Listening...", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((8, 67), "Listening...", font=_small_font, fill=(80, 80, 120, 255))
     elif status == "THINKING":
-        draw.text((18, 67), "Thinking...", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((8, 67), "Thinking...", font=_small_font, fill=(80, 80, 120, 255))
     elif status == "SPEAKING":
-        draw.text((18, 67), "Speaking...", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((8, 67), "Speaking...", font=_small_font, fill=(80, 80, 120, 255))
     elif status == "ERROR":
-        draw.text((18, 67), "ERROR", font=_small_font, fill=(200, 40, 40, 255))
+        draw.text((8, 67), "ERROR", font=_small_font, fill=(200, 40, 40, 255))
 
-    # Bottom status bar
+    # Bottom status bar - line-wrap display
     bar_y = HEIGHT - 38
     draw.rectangle([0, bar_y, WIDTH, HEIGHT], fill=(50, 55, 70, 255))
     if text:
@@ -221,24 +249,36 @@ def render_frame(status, emoji, text, code):
         text_w = max(0, tb[2] - tb[0])
         if text_w <= avail_w:
             draw.text((x0, y0), text, font=_text_font, fill=(220, 225, 240, 255))
-            scroll_bucket = 0
+            _line_wrap_lines = []
+            _line_wrap_current_text = ""
+            _line_wrap_line = 0
+            line_bucket = 0
         else:
-            text_key = (status, text)
-            if text_key != _scroll_text_key:
-                _scroll_text_key = text_key
-                _scroll_start_ts = time.monotonic()
-            speed = 42.0  # px/s
-            max_shift = text_w - avail_w
-            elapsed = max(0.0, time.monotonic() - _scroll_start_ts)
-            shift = min(max_shift, int(elapsed * speed))
-            x = x0 - shift
-            draw.text((x, y0), text, font=_text_font, fill=(220, 225, 240, 255))
-            scroll_bucket = shift
+            if text != _line_wrap_current_text:
+                prev_line = _line_wrap_line
+                _line_wrap_lines = _wrap_text(text, _text_font, avail_w)
+                _line_wrap_current_text = text
+                if _line_wrap_lines and prev_line < len(_line_wrap_lines):
+                    _line_wrap_line = prev_line
+                else:
+                    _line_wrap_line = 0
+                _line_wrap_next_ts = time.monotonic() + _LINE_SHOW_S + _LINE_EXTEND_S
+            else:
+                now = time.monotonic()
+                if now >= _line_wrap_next_ts and _line_wrap_line + 1 < len(_line_wrap_lines):
+                    _line_wrap_line += 1
+                    _line_wrap_next_ts = now + _LINE_SHOW_S
+            idx = min(_line_wrap_line, max(0, len(_line_wrap_lines) - 1))
+            if _line_wrap_lines and idx < len(_line_wrap_lines):
+                draw.text((x0, y0), _line_wrap_lines[idx], font=_text_font, fill=(220, 225, 240, 255))
+            line_bucket = _line_wrap_line
     else:
-        _scroll_text_key = None
-        scroll_bucket = 0
+        _line_wrap_lines = []
+        _line_wrap_current_text = ""
+        _line_wrap_line = 0
+        line_bucket = 0
 
-    frame_key = (status, emoji, text, code, scroll_bucket)
+    frame_key = (status, emoji, text, code, line_bucket)
     global _last_frame_key
     if frame_key == _last_frame_key:
         img.close()

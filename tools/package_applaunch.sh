@@ -49,6 +49,10 @@ export XIAOZHI_KEYBOARD_DEVICE="${APPLAUNCH_LINUX_KEYBOARD_DEVICE:-/dev/input/by
 LOG_DIR="/tmp/xiaozhi_logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/xiaozhi_$(date +%Y%m%d_%H%M%S).log"
+if ! touch "$LOG_FILE" 2>/dev/null; then
+	LOG_DIR="/tmp"
+	LOG_FILE="$LOG_DIR/xiaozhi_$(date +%Y%m%d_%H%M%S).log"
+fi
 {
 	echo "[launcher] fbdev=$XIAOZHI_FBDEV keyboard=$XIAOZHI_KEYBOARD_DEVICE"
 	exec /usr/share/APPLaunch/bin/xiaozhi_app
