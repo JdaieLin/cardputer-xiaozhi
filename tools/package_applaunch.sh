@@ -6,6 +6,7 @@ BUILD_DIR="$ROOT_DIR/build"
 BIN="$BUILD_DIR/xiaozhi_app"
 PKG_ROOT="$BUILD_DIR/applaunch-package"
 OUT_DEB="$BUILD_DIR/xiaozhi-applaunch_0.1-m5stack1_arm64.deb"
+ICON_SRC="${XIAOZHI_ICON_SRC:-$ROOT_DIR/tools/assets/xiaozhi.png}"
 
 if [[ ! -x "$BIN" ]]; then
 	echo "missing binary: $BIN"
@@ -18,12 +19,18 @@ mkdir -p \
 	"$PKG_ROOT/DEBIAN" \
 	"$PKG_ROOT/usr/share/APPLaunch/applications" \
 	"$PKG_ROOT/usr/share/APPLaunch/bin" \
+	"$PKG_ROOT/usr/share/APPLaunch/share/images" \
 	"$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi"
 
 install -m 0755 "$BIN" "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_app"
 install -m 0644 "$ROOT_DIR/main/tools/ws_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/ws_bridge.py"
 install -m 0644 "$ROOT_DIR/main/tools/display_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/display_bridge.py"
 install -m 0755 "$ROOT_DIR/tools/install.sh" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/install.sh"
+if [[ ! -f "$ICON_SRC" ]]; then
+	echo "missing icon: $ICON_SRC"
+	exit 1
+fi
+install -m 0644 "$ICON_SRC" "$PKG_ROOT/usr/share/APPLaunch/share/images/xiaozhi.png"
 
 # Bundle fonts into the .deb if they were fetched by CI
 if [ -d "$ROOT_DIR/tools/fonts" ] && [ -n "$(ls -A "$ROOT_DIR/tools/fonts" 2>/dev/null)" ]; then
@@ -53,6 +60,14 @@ detect_fbdev() {
 }
 export XIAOZHI_FBDEV="$(detect_fbdev)"
 export XIAOZHI_KEYBOARD_DEVICE="${APPLAUNCH_LINUX_KEYBOARD_DEVICE:-/dev/input/by-path/platform-3f804000.i2c-event}"
+LOCK_DIR="/tmp/xiaozhi_singleton.lock"
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+	exit 0
+fi
+cleanup() {
+	rmdir "$LOCK_DIR" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
 LOG_DIR="/tmp/xiaozhi_logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/xiaozhi_$(date +%Y%m%d_%H%M%S).log"
@@ -62,7 +77,14 @@ if ! touch "$LOG_FILE" 2>/dev/null; then
 fi
 {
 	echo "[launcher] fbdev=$XIAOZHI_FBDEV keyboard=$XIAOZHI_KEYBOARD_DEVICE"
-	exec /usr/share/APPLaunch/bin/xiaozhi_app
+	/usr/share/APPLaunch/bin/xiaozhi_app &
+	APP_PID=$!
+	term_child() {
+		kill -TERM "$APP_PID" 2>/dev/null || true
+		wait "$APP_PID" 2>/dev/null || true
+	}
+	trap term_child INT TERM
+	wait "$APP_PID"
 } >>"$LOG_FILE" 2>&1
 EOF
 chmod 0755 "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_launcher"
@@ -71,6 +93,7 @@ cat > "$PKG_ROOT/usr/share/APPLaunch/applications/xiaozhi.desktop" <<'EOF'
 [Desktop Entry]
 Name=XiaoZhi
 Exec=/usr/share/APPLaunch/bin/xiaozhi_launcher
+Icon=share/images/xiaozhi.png
 Terminal=false
 Sysplause=false
 Type=Application

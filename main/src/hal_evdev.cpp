@@ -90,6 +90,11 @@ void HalEvdev::poll() {
                 std::cout << "[hal-evdev] ENTER release" << std::endl;
                 if (release_cb_) release_cb_();
             }
+        } else if (ev.code == KEY_HOME || ev.code == KEY_ESC) {
+            if (ev.value == 1) {
+                std::cout << "[hal-evdev] HOME/ESC press -> request quit" << std::endl;
+                should_quit_ = true;
+            }
         }
     }
 }
