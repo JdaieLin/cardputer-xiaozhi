@@ -128,7 +128,7 @@ bool Application::start() {
     if (binding_code_.empty()) {
         binding_code_ = "------";
     }
-    setState(AppState::Binding, "code " + binding_code_ + " open app to bind");
+    setState(AppState::Binding, "code " + binding_code_ + " visit xiaozhi.me to bind");
     return true;
 }
 

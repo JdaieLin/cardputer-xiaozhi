@@ -155,7 +155,7 @@ void UiFbdev::renderState(AppState state, const std::string& text, const std::st
     drawText(12, 42, label, 2, white);
 
     if (state == AppState::Binding) {
-        drawText(16, 68, "Open XiaoZhi app and bind", 1, dim);
+        drawText(16, 68, "Go to xiaozhi.me to bind", 1, dim);
         std::string code_str;
         for (char c : text) {
             if (c >= '0' && c <= '9') code_str.push_back(c);

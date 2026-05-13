@@ -231,7 +231,7 @@ def render_frame(status, emoji, text, code):
 
     # Content area
     if status == "BINDING":
-        draw.text((8, 67), "Open XiaoZhi app to bind", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((8, 67), "Go to xiaozhi.me to bind", font=_small_font, fill=(80, 80, 120, 255))
         if code and len(code) == 6:
             bbox = _code_font.getbbox(code)
             cw = bbox[2] - bbox[0]
