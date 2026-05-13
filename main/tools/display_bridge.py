@@ -31,6 +31,7 @@ HEIGHT = int(os.environ.get("XIAOZHI_FB_HEIGHT", "170"))
 # ---- font setup ----
 _FONT_SEARCH = [
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "NotoSansSC-Bold.ttf"),
+    "/usr/share/fonts/truetype/xiaozhi/NotoSansSC-Regular.ttf",
     "/usr/share/fonts/truetype/xiaozhi/NotoSansSC-Bold.ttf",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansCJKSC-Regular.otf",

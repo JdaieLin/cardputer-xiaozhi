@@ -57,11 +57,14 @@ echo "[3/4] Checking fonts..."
 # The display_bridge.py searches these paths in order.
 FONT_OK=0
 for candidate in \
+    "$FONT_DIR/NotoSansSC-Regular.ttf" \
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc" \
     "/usr/share/fonts/opentype/noto/NotoSansCJKSC-Regular.otf" \
     "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc" \
+    "/usr/share/fonts/truetype/noto/NotoSansSC-Regular.ttf" \
     "/usr/share/fonts/truetype/noto/NotoSansSC-Regular.otf" \
     "$FONT_DIR/NotoSansSC-Bold.ttf" \
+    ${BUNDLED_FONTS:+"$BUNDLED_FONTS/NotoSansSC-Regular.ttf"} \
     ${BUNDLED_FONTS:+"$BUNDLED_FONTS/NotoSansSC-Bold.ttf"}; do
     if [ -n "$candidate" ] && [ -f "$candidate" ]; then
         FONT_OK=1
@@ -86,6 +89,11 @@ done
 if [ "$FONT_OK" -eq 0 ] || [ "$EMOJI_OK" -eq 0 ]; then
     echo "  → installing fonts to $FONT_DIR ..."
     mkdir -p "$FONT_DIR"
+
+    if [ -n "${BUNDLED_FONTS:-}" ] && [ -f "$BUNDLED_FONTS/NotoSansSC-Regular.ttf" ]; then
+        echo "  → using bundled NotoSansSC-Regular.ttf"
+        cp "$BUNDLED_FONTS/NotoSansSC-Regular.ttf" "$FONT_DIR/"
+    fi
 
     if [ "$FONT_OK" -eq 0 ]; then
         if [ -n "${BUNDLED_FONTS:-}" ] && [ -f "$BUNDLED_FONTS/NotoSansSC-Bold.ttf" ]; then

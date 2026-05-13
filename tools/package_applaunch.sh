@@ -32,12 +32,35 @@ if [[ ! -f "$ICON_SRC" ]]; then
 fi
 install -m 0644 "$ICON_SRC" "$PKG_ROOT/usr/share/APPLaunch/share/images/xiaozhi.png"
 
-# Bundle fonts into the .deb if they were fetched by CI
-if [ -d "$ROOT_DIR/tools/fonts" ] && [ -n "$(ls -A "$ROOT_DIR/tools/fonts" 2>/dev/null)" ]; then
-    mkdir -p "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/fonts"
-    cp "$ROOT_DIR/tools/fonts/"* "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/fonts/"
-    echo "[package] bundled fonts: $(ls "$ROOT_DIR/tools/fonts/")"
-fi
+# Bundle required fonts into the .deb.
+FONT_DST="$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/fonts"
+mkdir -p "$FONT_DST"
+
+copy_first_font() {
+	dst_name="$1"
+	shift
+	for src in "$@"; do
+		if [ -f "$src" ]; then
+			install -m 0644 "$src" "$FONT_DST/$dst_name"
+			echo "[package] bundled font: $dst_name <= $src"
+			return 0
+		fi
+	done
+	echo "[package] missing required font: $dst_name" >&2
+	return 1
+}
+
+copy_first_font "NotoColorEmoji.ttf" \
+	"$ROOT_DIR/tools/fonts/NotoColorEmoji.ttf" \
+	"/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf" \
+	"/usr/share/fonts/opentype/noto/NotoColorEmoji.ttf"
+
+copy_first_font "NotoSansSC-Regular.ttf" \
+	"$ROOT_DIR/tools/fonts/NotoSansSC-Regular.ttf" \
+	"/usr/share/fonts/truetype/noto/NotoSansSC-Regular.ttf" \
+	"/usr/share/fonts/truetype/noto/NotoSansSC-Regular.otf" \
+	"/usr/share/fonts/opentype/noto/NotoSansCJKSC-Regular.otf" \
+	"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
 
 
 cat > "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_launcher" <<'EOF'
