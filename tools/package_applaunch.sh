@@ -66,7 +66,33 @@ copy_first_font "NotoSansSC-Regular.ttf" \
 cat > "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_launcher" <<'EOF'
 #!/usr/bin/env sh
 export XIAOZHI_WS_BRIDGE=/usr/share/APPLaunch/share/xiaozhi/ws_bridge.py
-export SDL_AUDIODRIVER=alsa
+
+# APPLaunch runs as root, but audio is provided by the logged-in
+# user's PipeWire PulseAudio compatibility socket.
+export XDG_RUNTIME_DIR=/run/user/1000
+export SDL_AUDIODRIVER=pulseaudio
+export PULSE_SERVER="unix:/run/user/1000/pulse/native"
+export XIAOZHI_CAPTURE_BACKEND=alsa
+unset AUDIODEV
+unset XIAOZHI_AUDIO_CAPTURE_DEVICE
+unset XIAOZHI_AUDIO_PLAYBACK_DEVICE
+
+# Initialize ES8388 codec mixer (PGA gain, output volume, routing)
+amixer -c 1 sset 'ADC MUX' AMIC 2>/dev/null || true
+amixer -c 1 sset 'PGAL Select' 'DifferentialL' 2>/dev/null || true
+amixer -c 1 sset 'PGAR Select' 'DifferentialR' 2>/dev/null || true
+amixer -c 1 sset 'ADCL PGA' 14 2>/dev/null || true
+amixer -c 1 sset 'ADCR PGA' 14 2>/dev/null || true
+amixer -c 1 sset 'DACL' 200 2>/dev/null || true
+amixer -c 1 sset 'DACR' 200 2>/dev/null || true
+amixer -c 1 sset 'ADC2DAC Mixer' 127 2>/dev/null || true
+amixer -c 1 sset 'OUTL MUX' Normal 2>/dev/null || true
+amixer -c 1 sset 'OUTR MUX' Normal 2>/dev/null || true
+wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 2>/dev/null || true
+wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.65 2>/dev/null || true
+wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0 2>/dev/null || true
+wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 1.0 2>/dev/null || true
+
 detect_fbdev() {
 	if [ -n "${APPLAUNCH_LINUX_FBDEV_DEVICE:-}" ]; then
 		echo "$APPLAUNCH_LINUX_FBDEV_DEVICE"

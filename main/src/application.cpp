@@ -1,6 +1,8 @@
 #include "application.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <utility>
 
@@ -177,6 +179,22 @@ void Application::tick() {
     if (audio_->isCapturing()) {
         auto frame = audio_->readPcmFrame();
         if (!frame.empty()) {
+            static int sent_frames = 0;
+            sent_frames++;
+            if (sent_frames <= 5 || sent_frames % 50 == 0) {
+                int peak = 0;
+                long long energy = 0;
+                for (int16_t sample : frame) {
+                    peak = std::max(peak, std::abs(static_cast<int>(sample)));
+                    energy += static_cast<long long>(sample) * sample;
+                }
+                const double rms = frame.empty() ? 0.0 : std::sqrt(static_cast<double>(energy) / frame.size());
+                std::cout << "[capture] frame #" << sent_frames
+                          << " samples=" << frame.size()
+                          << " peak=" << peak
+                          << " rms=" << static_cast<int>(rms)
+                          << std::endl;
+            }
             ws_->sendAudioFrame(frame);
         }
     }

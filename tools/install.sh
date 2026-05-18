@@ -16,7 +16,7 @@ echo "=== XiaoZhi App Launcher installer ==="
 
 # ── system packages ──────────────────────────────────────────────
 echo "[1/4] Installing system packages..."
-SYSTEM_PKGS="libsdl2-2.0-0 libsdl2-ttf-2.0-0 python3 python3-pip python3-pil"
+SYSTEM_PKGS="libsdl2-dev libsdl2-ttf-dev python3 python3-pip python3-pil fonts-noto-cjk fonts-noto-color-emoji"
 NEED_INSTALL=""
 
 for pkg in $SYSTEM_PKGS; do
@@ -142,6 +142,39 @@ fi
 # ── Verify ───────────────────────────────────────────────────────
 echo "[4/4] Verifying installation..."
 echo "  ✓ xiaozhi_app: $(which xiaozhi_app 2>/dev/null || echo /usr/share/APPLaunch/bin/xiaozhi_app)"
+
+# ── Ensure PipeWire is present for audio ──
+echo "  → installing PipeWire audio..."
+if [ "$(id -u)" -eq 0 ]; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        pipewire pipewire-pulse wireplumber 2>/dev/null || true
+else
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        pipewire pipewire-pulse wireplumber 2>/dev/null || true
+fi
+echo "  ✓ PipeWire ready"
+
+# ── ES8388 mixer: boost mic gain and output volume ──
+echo "  → initializing ES8388 mixer..."
+amixer -c 1 sset 'ADC MUX' AMIC 2>/dev/null || true
+amixer -c 1 sset 'PGAL Select' 'DifferentialL' 2>/dev/null || true
+amixer -c 1 sset 'PGAR Select' 'DifferentialR' 2>/dev/null || true
+amixer -c 1 sset 'ADCL PGA' 14 2>/dev/null || true
+amixer -c 1 sset 'ADCR PGA' 14 2>/dev/null || true
+amixer -c 1 sset 'DACL' 200 2>/dev/null || true
+amixer -c 1 sset 'DACR' 200 2>/dev/null || true
+amixer -c 1 sset 'ADC2DAC Mixer' 127 2>/dev/null || true
+amixer -c 1 sset 'OUTL MUX' Normal 2>/dev/null || true
+amixer -c 1 sset 'OUTR MUX' Normal 2>/dev/null || true
+
+# Unmute PipeWire default sink/source and set them to 100%
+if command -v wpctl >/dev/null 2>&1; then
+    wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 2>/dev/null || true
+    wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.65 2>/dev/null || true
+    wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0 2>/dev/null || true
+    wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 1.0 2>/dev/null || true
+fi
+echo "  ✓ ES8388 mixer configured"
 echo ""
 echo "=== Installation complete ==="
 echo ""

@@ -499,6 +499,13 @@ void WsClientBridge::sendAudioFrame(const std::vector<int16_t>& pcm) {
         return;
     }
 
+    static int sent_frames = 0;
+    sent_frames++;
+    if (sent_frames <= 5 || sent_frames % 50 == 0) {
+        std::cout << "[ws-bridge] send audio frame #" << sent_frames
+                  << " samples=" << pcm.size() << std::endl;
+    }
+
     std::vector<unsigned char> bytes(pcm.size() * sizeof(int16_t));
     std::memcpy(bytes.data(), pcm.data(), bytes.size());
     const std::string b64 = b64Encode(bytes);
