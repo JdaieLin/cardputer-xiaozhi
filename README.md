@@ -78,6 +78,26 @@ and publishes a prerelease. Tagged pushes (`v*`) attach the `.deb` to the releas
 
 Pre-built packages are available on the [Releases](https://github.com/JdaieLin/cardputer-xiaozhi/releases) page.
 
+## App Store submission
+
+This repository now includes CardputerZero App Store metadata in [`app-builder.json`](./app-builder.json)
+and store assets in [`store/`](./store/).
+
+Recommended publish flow:
+
+```bash
+./build.sh --device --package
+python3 /path/to/prepublish_check.py --deb build/xiaozhi-applaunch_0.2.0-m5stack1_arm64.deb --app-dir .
+czdev login
+czdev publish --deb build/xiaozhi-applaunch_0.2.0-m5stack1_arm64.deb
+```
+
+To regenerate the listing screenshots:
+
+```bash
+/private/tmp/cardputer-xiaozhi-venv/bin/python tools/generate_store_assets.py
+```
+
 ## Deployment to Raspberry Pi
 
 ```bash

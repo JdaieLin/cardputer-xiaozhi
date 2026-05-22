@@ -23,14 +23,19 @@ except ImportError:
     print(json.dumps({"event": "error", "text": "missing dependency: PIL (pillow)"}))
     sys.exit(1)
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+
 # ---- framebuffer helpers ----
 FB_DEV = os.environ.get("XIAOZHI_FBDEV", os.environ.get("APPLAUNCH_LINUX_FBDEV_DEVICE", "/dev/fb0"))
 WIDTH = int(os.environ.get("XIAOZHI_FB_WIDTH", "320"))
 HEIGHT = int(os.environ.get("XIAOZHI_FB_HEIGHT", "170"))
+SNAPSHOT_PATH = os.environ.get("XIAOZHI_RENDER_PNG_PATH", "")
 
 # ---- font setup ----
 _FONT_SEARCH = [
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "assets", "NotoSansSC-Bold.ttf"),
+    os.path.join(REPO_ROOT, "tools", "fonts", "NotoSansSC-Regular.ttf"),
+    os.path.join(REPO_ROOT, "tools", "fonts", "NotoSansSC-Bold.ttf"),
     "/usr/share/fonts/truetype/xiaozhi/NotoSansSC-Regular.ttf",
     "/usr/share/fonts/truetype/xiaozhi/NotoSansSC-Bold.ttf",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
@@ -40,13 +45,18 @@ _FONT_SEARCH = [
     "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
     "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
     "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+    "/System/Library/Fonts/PingFang.ttc",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    os.path.join(REPO_ROOT, "tools", "fonts", "NotoSansCJKsc-Regular.otf"),
 ]
 
 _EMOJI_FONT_SEARCH = [
+    os.path.join(REPO_ROOT, "tools", "fonts", "NotoColorEmoji.ttf"),
     "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
     "/usr/share/fonts/opentype/noto/NotoColorEmoji.ttf",
     "/usr/share/fonts/truetype/xiaozhi/NotoColorEmoji.ttf",
     "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+    "/System/Library/Fonts/Apple Color Emoji.ttc",
 ]
 
 _font_path = ""
@@ -86,7 +96,9 @@ def _load_emoji_font(path, fallback_path):
 
 
 _emoji_font, _emoji_font_px = _load_emoji_font(_emoji_font_path, _font_path)
-_emoji_use_embedded = "NotoColorEmoji" in _emoji_font_path
+_emoji_use_embedded = any(
+    marker in _emoji_font_path for marker in ("NotoColorEmoji", "Apple Color Emoji")
+)
 print(
     json.dumps(
         {
@@ -145,6 +157,8 @@ _LINE_EXTEND_S = 1.0
 
 def fb_open():
     global _fb_fd, _fb_size
+    if SNAPSHOT_PATH:
+        return
     _fb_fd = os.open(FB_DEV, os.O_RDWR)
     _fb_size = WIDTH * HEIGHT * 2
 
@@ -293,6 +307,9 @@ def render_frame(status, emoji, text, code):
         img.close()
         return
     _last_frame_key = frame_key
+
+    if SNAPSHOT_PATH:
+        img.save(SNAPSHOT_PATH, format="PNG")
 
     # Write to framebuffer
     data = img_to_rgb565(img)

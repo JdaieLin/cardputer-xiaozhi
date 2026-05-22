@@ -3,10 +3,39 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="$ROOT_DIR/build"
-BIN="$BUILD_DIR/xiaozhi_app"
-PKG_ROOT="$BUILD_DIR/applaunch-package"
-OUT_DEB="$BUILD_DIR/xiaozhi-applaunch_0.1-m5stack1_arm64.deb"
+APP_BUILDER_JSON="$ROOT_DIR/app-builder.json"
 ICON_SRC="${XIAOZHI_ICON_SRC:-$ROOT_DIR/tools/assets/xiaozhi.png}"
+MAINTAINER_NAME="${XIAOZHI_MAINTAINER_NAME:-JdaieLin}"
+MAINTAINER_EMAIL="${XIAOZHI_MAINTAINER_EMAIL:-hongruilin@alum.calarts.edu}"
+HOMEPAGE_URL="${XIAOZHI_HOMEPAGE_URL:-https://github.com/JdaieLin/cardputer-xiaozhi}"
+
+json_value() {
+	local expr="$1"
+	python3 - "$APP_BUILDER_JSON" "$expr" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+config_path = Path(sys.argv[1])
+expr = sys.argv[2]
+data = json.loads(config_path.read_text())
+value = data
+for key in expr.split("."):
+    value = value[key]
+print(value)
+PY
+}
+
+PACKAGE_NAME="$(json_value package_name)"
+VERSION="$(json_value version)"
+REVISION="$(json_value revision)"
+APP_NAME="$(json_value app_name)"
+BIN_NAME="$(json_value bin_name)"
+DESCRIPTION="$(json_value description)"
+
+BIN="$BUILD_DIR/$BIN_NAME"
+PKG_ROOT="$BUILD_DIR/${PACKAGE_NAME}-package"
+OUT_DEB="$BUILD_DIR/${PACKAGE_NAME}_${VERSION}-${REVISION}_arm64.deb"
 
 if [[ ! -x "$BIN" ]]; then
 	echo "missing binary: $BIN"
@@ -22,7 +51,7 @@ mkdir -p \
 	"$PKG_ROOT/usr/share/APPLaunch/share/images" \
 	"$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi"
 
-install -m 0755 "$BIN" "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_app"
+install -m 0755 "$BIN" "$PKG_ROOT/usr/share/APPLaunch/bin/$BIN_NAME"
 install -m 0644 "$ROOT_DIR/main/tools/ws_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/ws_bridge.py"
 install -m 0644 "$ROOT_DIR/main/tools/display_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/display_bridge.py"
 install -m 0755 "$ROOT_DIR/tools/install.sh" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/install.sh"
@@ -57,9 +86,14 @@ copy_first_font "NotoColorEmoji.ttf" \
 
 copy_first_font "NotoSansSC-Regular.ttf" \
 	"$ROOT_DIR/tools/fonts/NotoSansSC-Regular.ttf" \
+	"$ROOT_DIR/tools/fonts/NotoSansSC-Bold.ttf" \
+	"$ROOT_DIR/tools/fonts/NotoSansCJKsc-Regular.otf" \
 	"/usr/share/fonts/truetype/noto/NotoSansSC-Regular.ttf" \
 	"/usr/share/fonts/truetype/noto/NotoSansSC-Regular.otf" \
+	"/usr/share/fonts/truetype/noto/NotoSansSC-Bold.ttf" \
 	"/usr/share/fonts/opentype/noto/NotoSansCJKSC-Regular.otf" \
+	"/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf" \
+	"/usr/share/fonts/opentype/noto/NotoSansSC-Bold.otf" \
 	"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
 
 
@@ -126,7 +160,7 @@ if ! touch "$LOG_FILE" 2>/dev/null; then
 fi
 {
 	echo "[launcher] fbdev=$XIAOZHI_FBDEV keyboard=$XIAOZHI_KEYBOARD_DEVICE"
-	/usr/share/APPLaunch/bin/xiaozhi_app &
+	/usr/share/APPLaunch/bin/__BIN_NAME__ &
 	APP_PID=$!
 	term_child() {
 		kill -TERM "$APP_PID" 2>/dev/null || true
@@ -136,11 +170,19 @@ fi
 	wait "$APP_PID"
 } >>"$LOG_FILE" 2>&1
 EOF
+python3 - "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_launcher" "$BIN_NAME" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+bin_name = sys.argv[2]
+path.write_text(path.read_text().replace("__BIN_NAME__", bin_name))
+PY
 chmod 0755 "$PKG_ROOT/usr/share/APPLaunch/bin/xiaozhi_launcher"
 
-cat > "$PKG_ROOT/usr/share/APPLaunch/applications/xiaozhi.desktop" <<'EOF'
+cat > "$PKG_ROOT/usr/share/APPLaunch/applications/xiaozhi.desktop" <<EOF
 [Desktop Entry]
-Name=XiaoZhi
+Name=$APP_NAME
 Exec=/usr/share/APPLaunch/bin/xiaozhi_launcher
 Icon=share/images/xiaozhi.png
 Terminal=false
@@ -148,15 +190,15 @@ Sysplause=false
 Type=Application
 EOF
 
-cat > "$PKG_ROOT/DEBIAN/control" <<'EOF'
-Package: xiaozhi-applaunch
-Version: 0.1-m5stack1
+cat > "$PKG_ROOT/DEBIAN/control" <<EOF
+Package: $PACKAGE_NAME
+Version: $VERSION-$REVISION
 Architecture: arm64
-Maintainer: M5Stack <m5stack@m5stack.com>
+Maintainer: $MAINTAINER_NAME <$MAINTAINER_EMAIL>
 Section: APPLaunch
 Priority: optional
-Homepage: https://github.com/dianjixz/M5CardputerZero-UserDemo
-Description: XiaoZhi voice assistant APPLaunch entry for M5Cardputer Zero
+Homepage: $HOMEPAGE_URL
+Description: $DESCRIPTION for M5Cardputer Zero
 EOF
 
 (

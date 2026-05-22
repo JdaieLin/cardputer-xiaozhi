@@ -6,16 +6,16 @@ mkdir -p "$FONTS_DIR"
 
 echo "=== Fetching fonts to $FONTS_DIR ==="
 
-# NotoSansSC Bold (CJK text, ~5 MB)
-CJK_URL="https://github.com/google/fonts/raw/main/ofl/notosanssc/static/NotoSansSC-Bold.ttf"
-CJK_FILE="$FONTS_DIR/NotoSansSC-Bold.ttf"
+# Noto Sans CJK SC Regular (CJK text)
+CJK_URL="https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf"
+CJK_FILE="$FONTS_DIR/NotoSansCJKsc-Regular.otf"
 
 if [ ! -f "$CJK_FILE" ]; then
     echo "  → $CJK_URL"
     curl -fsSLo "$CJK_FILE" "$CJK_URL" || {
         echo "  ⚠ primary URL failed, trying mirror..."
         curl -fsSLo "$CJK_FILE" \
-            "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/OTF/SimplifiedChinese/NotoSansSC-Bold.otf" || {
+            "https://github.com/notofonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf" || {
             echo "  ⚠ mirror also failed, skipping CJK font"
             rm -f "$CJK_FILE"
         }
@@ -28,7 +28,7 @@ else
 fi
 
 # NotoColorEmoji (~10 MB)
-EMOJI_URL="https://github.com/google/fonts/raw/main/ofl/notocoloremoji/NotoColorEmoji%5Bwght%5D.ttf"
+EMOJI_URL="https://raw.githubusercontent.com/googlefonts/noto-emoji/main/fonts/NotoColorEmoji.ttf"
 EMOJI_FILE="$FONTS_DIR/NotoColorEmoji.ttf"
 
 if [ ! -f "$EMOJI_FILE" ]; then
