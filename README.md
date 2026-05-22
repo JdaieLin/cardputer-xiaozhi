@@ -52,7 +52,7 @@ sudo pip3 install --break-system-packages websockets opuslib pillow
 
 ```bash
 ./build.sh --device --package
-# Output: build/xiaozhi-applaunch_0.1-m5stack1_arm64.deb
+# Output: build/cardputerzero-xiaozhi_0.2.0-m5stack1_arm64.deb
 ```
 
 ### Cross-compile from macOS (aarch64)
@@ -87,9 +87,9 @@ Recommended publish flow:
 
 ```bash
 ./build.sh --device --package
-python3 /path/to/prepublish_check.py --deb build/xiaozhi-applaunch_0.2.0-m5stack1_arm64.deb --app-dir .
+python3 /path/to/prepublish_check.py --deb build/cardputerzero-xiaozhi_0.2.0-m5stack1_arm64.deb --app-dir .
 czdev login
-czdev publish --deb build/xiaozhi-applaunch_0.2.0-m5stack1_arm64.deb
+czdev publish --deb build/cardputerzero-xiaozhi_0.2.0-m5stack1_arm64.deb
 ```
 
 To regenerate the listing screenshots:
@@ -112,8 +112,8 @@ This script:
 ### Manual install
 
 ```bash
-scp build/xiaozhi-applaunch_0.1-m5stack1_arm64.deb pi@192.168.100.199:/tmp/
-ssh pi@192.168.100.199 "sudo dpkg -i /tmp/xiaozhi-applaunch_0.1-m5stack1_arm64.deb"
+scp build/cardputerzero-xiaozhi_0.2.0-m5stack1_arm64.deb pi@192.168.100.199:/tmp/
+ssh pi@192.168.100.199 "sudo dpkg -i /tmp/cardputerzero-xiaozhi_0.2.0-m5stack1_arm64.deb"
 ssh pi@192.168.100.199 "sudo systemctl restart APPLaunch.service"
 ```
 
