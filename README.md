@@ -74,7 +74,9 @@ pip3 install websockets opuslib
 ## CI / Automatic builds
 
 Every push to `main` or `ci/**` branches triggers an automatic arm64 `.deb` build
-and publishes a prerelease. Tagged pushes (`v*`) attach the `.deb` to the release.
+and publishes a prerelease. Tagged pushes (`v*`) attach the `.deb` to the release,
+with the package version derived from the tag name, so `v0.2.1` builds
+`cardputerzero-xiaozhi_0.2.1-..._arm64.deb`.
 
 Pre-built packages are available on the [Releases](https://github.com/JdaieLin/cardputer-xiaozhi/releases) page.
 

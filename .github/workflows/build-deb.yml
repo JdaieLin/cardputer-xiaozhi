@@ -25,7 +25,13 @@ jobs:
             python3-pip python3-pil
 
       - name: Build .deb
-        run: chmod +x build.sh tools/package_applaunch.sh && ./build.sh --device --package
+        run: |
+          chmod +x build.sh tools/package_applaunch.sh
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME:-}" == v* ]]; then
+            export XIAOZHI_VERSION="${GITHUB_REF_NAME#v}"
+            echo "Using tag-derived package version: $XIAOZHI_VERSION"
+          fi
+          ./build.sh --device --package
 
       - name: Fetch fonts for distribution
         run: chmod +x tools/fetch_fonts.sh && ./tools/fetch_fonts.sh tools/fonts

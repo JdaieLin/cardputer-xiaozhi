@@ -52,12 +52,16 @@ print(value)
 PY
 }
 
-PACKAGE_NAME="$(json_value package_name)"
-VERSION="$(json_value version)"
-REVISION="$(json_value revision)"
+PACKAGE_NAME="${XIAOZHI_PACKAGE_NAME:-$(json_value package_name)}"
+VERSION="${XIAOZHI_VERSION:-$(json_value version)}"
+REVISION="${XIAOZHI_REVISION:-$(json_value revision)}"
 APP_NAME="$(json_value app_name)"
 BIN_NAME="$(json_value bin_name)"
 DESCRIPTION="$(json_value description)"
+
+if [[ -n "${XIAOZHI_VERSION:-}" ]]; then
+	echo "[package] using version override from environment: $VERSION"
+fi
 
 BIN="$BUILD_DIR/$BIN_NAME"
 PKG_ROOT="$BUILD_DIR/${PACKAGE_NAME}-package"
