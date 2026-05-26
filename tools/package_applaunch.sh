@@ -12,6 +12,8 @@ GTAR_BIN="${GTAR:-}"
 if [[ -z "$GTAR_BIN" ]]; then
 	if command -v gtar >/dev/null 2>&1; then
 		GTAR_BIN="$(command -v gtar)"
+	elif command -v tar >/dev/null 2>&1 && tar --version 2>/dev/null | grep -q 'GNU tar'; then
+		GTAR_BIN="$(command -v tar)"
 	elif [[ -x /opt/homebrew/bin/gtar ]]; then
 		GTAR_BIN="/opt/homebrew/bin/gtar"
 	else
