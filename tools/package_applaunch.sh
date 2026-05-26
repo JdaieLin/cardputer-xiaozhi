@@ -8,6 +8,32 @@ ICON_SRC="${XIAOZHI_ICON_SRC:-$ROOT_DIR/tools/assets/xiaozhi.png}"
 MAINTAINER_NAME="${XIAOZHI_MAINTAINER_NAME:-JdaieLin}"
 MAINTAINER_EMAIL="${XIAOZHI_MAINTAINER_EMAIL:-hongruilin@alum.calarts.edu}"
 HOMEPAGE_URL="${XIAOZHI_HOMEPAGE_URL:-https://github.com/JdaieLin/cardputer-xiaozhi}"
+GTAR_BIN="${GTAR:-}"
+if [[ -z "$GTAR_BIN" ]]; then
+	if command -v gtar >/dev/null 2>&1; then
+		GTAR_BIN="$(command -v gtar)"
+	elif [[ -x /opt/homebrew/bin/gtar ]]; then
+		GTAR_BIN="/opt/homebrew/bin/gtar"
+	else
+		echo "GNU tar is required for APPLaunch store-compatible packages. Install it with: brew install gnu-tar" >&2
+		exit 1
+	fi
+fi
+
+make_ustar_gz() {
+	local src_dir="$1"
+	local out_tar_gz="$2"
+	shift 2
+	(
+		cd "$src_dir"
+		COPYFILE_DISABLE=1 "$GTAR_BIN" \
+			--format=ustar \
+			--owner=0 --group=0 --numeric-owner \
+			--sort=name \
+			--mtime='UTC 2026-01-01' \
+			-czf "$out_tar_gz" "$@"
+	)
+}
 
 json_value() {
 	local expr="$1"
@@ -201,14 +227,8 @@ Homepage: $HOMEPAGE_URL
 Description: $DESCRIPTION for M5Cardputer Zero
 EOF
 
-(
-	cd "$PKG_ROOT/DEBIAN"
-	COPYFILE_DISABLE=1 tar -czf "$BUILD_DIR/control.tar.gz" .
-)
-(
-	cd "$PKG_ROOT"
-	COPYFILE_DISABLE=1 tar --exclude ./DEBIAN -czf "$BUILD_DIR/data.tar.gz" .
-)
+make_ustar_gz "$PKG_ROOT/DEBIAN" "$BUILD_DIR/control.tar.gz" .
+make_ustar_gz "$PKG_ROOT" "$BUILD_DIR/data.tar.gz" --exclude ./DEBIAN .
 printf '2.0\n' > "$BUILD_DIR/debian-binary"
 (
 	cd "$BUILD_DIR"
