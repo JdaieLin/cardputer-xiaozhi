@@ -24,7 +24,7 @@ echo "=== XiaoZhi App Launcher installer ==="
 
 # ── system packages ──────────────────────────────────────────────
 echo "[1/4] Installing system packages..."
-SYSTEM_PKGS="libsdl2-2.0-0 libsdl2-ttf-2.0-0 libopus0 python3 python3-pil python3-websockets pipewire pipewire-pulse wireplumber"
+SYSTEM_PKGS="libsdl2-2.0-0 libsdl2-ttf-2.0-0 libopus0 python3 python3-pil pipewire pipewire-pulse wireplumber"
 NEED_INSTALL=""
 
 for pkg in $SYSTEM_PKGS; do
@@ -52,15 +52,15 @@ fi
 
 # ── Python dependencies ────────────────────────────────────────
 echo "[2/4] Verifying Python dependencies..."
-if python3 -c "import websockets" 2>/dev/null; then
-    echo "  ✓ websockets"
-else
-    echo "  ✗ websockets missing (expected from system package: python3-websockets)"
+if [ -z "$VENDOR_DIR" ]; then
+    echo "  ✗ vendored opuslib directory not found"
     exit 1
 fi
 
-if [ -z "$VENDOR_DIR" ]; then
-    echo "  ✗ vendored opuslib directory not found"
+if python3 -c "import sys; sys.path.insert(0, '$VENDOR_DIR'); import websockets" 2>/dev/null; then
+    echo "  ✓ websockets (vendored)"
+else
+    echo "  ✗ vendored websockets import failed from $VENDOR_DIR"
     exit 1
 fi
 

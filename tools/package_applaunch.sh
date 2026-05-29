@@ -89,6 +89,7 @@ install -m 0644 "$ROOT_DIR/main/tools/ws_bridge.py" "$PKG_ROOT/usr/share/APPLaun
 install -m 0644 "$ROOT_DIR/main/tools/display_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/display_bridge.py"
 install -m 0755 "$ROOT_DIR/tools/install.sh" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/install.sh"
 cp -R "$ROOT_DIR/main/tools/vendor/opuslib" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/vendor/"
+cp -R "$ROOT_DIR/main/tools/vendor/websockets" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/vendor/"
 install -m 0644 "$ROOT_DIR/main/tools/vendor/opuslib.LICENSE" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/vendor/opuslib.LICENSE"
 if [[ ! -f "$ICON_SRC" ]]; then
 	echo "missing icon: $ICON_SRC"
@@ -273,7 +274,7 @@ Maintainer: $MAINTAINER_NAME <$MAINTAINER_EMAIL>
 Section: APPLaunch
 Priority: optional
 Homepage: $HOMEPAGE_URL
-Depends: libsdl2-2.0-0, libsdl2-ttf-2.0-0, libopus0, python3, python3-pil, python3-websockets, pipewire, pipewire-pulse, wireplumber
+Depends: libsdl2-2.0-0, libsdl2-ttf-2.0-0, libopus0, python3, python3-pil, pipewire, pipewire-pulse, wireplumber
 Description: $DESCRIPTION for M5Cardputer Zero
 EOF
 
