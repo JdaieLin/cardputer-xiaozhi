@@ -3,6 +3,7 @@
 #include <SDL.h>
 
 #include <cstdio>
+#include <string>
 #include <sys/types.h>
 #include <vector>
 
@@ -40,8 +41,12 @@ private:
     pid_t capture_pid_ = -1;
     FILE* tts_debug_raw_ = nullptr;
     int tts_debug_raw_count_ = 0;
+    int tts_debug_capture_index_ = 0;
+    std::string tts_debug_path_;
     FILE* mic_debug_raw_ = nullptr;
     int mic_debug_raw_count_ = 0;
+    int mic_debug_capture_index_ = 0;
+    std::string mic_debug_path_;
     int total_tts_frames_ = 0;
 };
 

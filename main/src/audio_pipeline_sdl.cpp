@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <iostream>
 #include <signal.h>
+#include <sstream>
 #include <string>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -123,6 +124,12 @@ std::string preferredExternalCaptureDevice() {
     }
 
     return "plughw:CARD=ES8388Audio,DEV=0";
+}
+
+std::string debugCapturePath(const char* prefix, int index) {
+    std::ostringstream oss;
+    oss << "/tmp/" << prefix << "_" << index << ".pcm";
+    return oss.str();
 }
 
 }  // namespace
@@ -254,7 +261,8 @@ std::vector<int16_t> AudioPipelineSdl::readPcmFrame() {
             return {};
         }
         if (mic_debug_raw_ == nullptr) {
-            mic_debug_raw_ = fopen("/tmp/xiaozhi_mic.pcm", "wb");
+            mic_debug_path_ = debugCapturePath("xiaozhi_mic", ++mic_debug_capture_index_);
+            mic_debug_raw_ = fopen(mic_debug_path_.c_str(), "wb");
             mic_debug_raw_count_ = 0;
         }
         if (mic_debug_raw_ != nullptr && mic_debug_raw_count_ < 16000 * 15) {
@@ -284,7 +292,8 @@ std::vector<int16_t> AudioPipelineSdl::readPcmFrame() {
 
     if (cap_channels == 1) {
         if (mic_debug_raw_ == nullptr) {
-            mic_debug_raw_ = fopen("/tmp/xiaozhi_mic.pcm", "wb");
+            mic_debug_path_ = debugCapturePath("xiaozhi_mic", ++mic_debug_capture_index_);
+            mic_debug_raw_ = fopen(mic_debug_path_.c_str(), "wb");
             mic_debug_raw_count_ = 0;
         }
         if (mic_debug_raw_ != nullptr && mic_debug_raw_count_ < 16000 * 15) {
@@ -303,7 +312,8 @@ std::vector<int16_t> AudioPipelineSdl::readPcmFrame() {
         mono[i] = static_cast<int16_t>(sum / cap_channels);
     }
     if (mic_debug_raw_ == nullptr) {
-        mic_debug_raw_ = fopen("/tmp/xiaozhi_mic.pcm", "wb");
+        mic_debug_path_ = debugCapturePath("xiaozhi_mic", ++mic_debug_capture_index_);
+        mic_debug_raw_ = fopen(mic_debug_path_.c_str(), "wb");
         mic_debug_raw_count_ = 0;
     }
     if (mic_debug_raw_ != nullptr && mic_debug_raw_count_ < 16000 * 15) {
@@ -325,7 +335,8 @@ void AudioPipelineSdl::playPcmFrame(const std::vector<int16_t>& pcm) {
 
     // Save the current TTS utterance until we return to listening.
     if (tts_debug_raw_ == nullptr) {
-        tts_debug_raw_ = fopen("/tmp/xiaozhi_tts.pcm", "wb");
+        tts_debug_path_ = debugCapturePath("xiaozhi_tts", ++tts_debug_capture_index_);
+        tts_debug_raw_ = fopen(tts_debug_path_.c_str(), "wb");
         tts_debug_raw_count_ = 0;
     }
     if (tts_debug_raw_ != nullptr && tts_debug_raw_count_ < 16000 * 15) {
@@ -367,7 +378,9 @@ void AudioPipelineSdl::closeTtsDebugCapture() {
 
     fclose(tts_debug_raw_);
     tts_debug_raw_ = nullptr;
-    std::cout << "[audio-sdl] debug TTS PCM saved: " << tts_debug_raw_count_ << " samples" << std::endl;
+    std::cout << "[audio-sdl] debug TTS PCM saved: " << tts_debug_path_
+              << " samples=" << tts_debug_raw_count_ << std::endl;
+    tts_debug_path_.clear();
 }
 
 void AudioPipelineSdl::closeMicDebugCapture() {
@@ -377,7 +390,9 @@ void AudioPipelineSdl::closeMicDebugCapture() {
 
     fclose(mic_debug_raw_);
     mic_debug_raw_ = nullptr;
-    std::cout << "[audio-sdl] debug MIC PCM saved: " << mic_debug_raw_count_ << " samples" << std::endl;
+    std::cout << "[audio-sdl] debug MIC PCM saved: " << mic_debug_path_
+              << " samples=" << mic_debug_raw_count_ << std::endl;
+    mic_debug_path_.clear();
 }
 
 bool AudioPipelineSdl::useExternalCapture() const {
