@@ -51,7 +51,7 @@ sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libopus0 fonts-noto-cjk font
 
 ```bash
 ./build.sh --device --package
-# Output: build/cardputerzero-xiaozhi_0.2.1-m5stack1_arm64.deb
+# Output: build/cardputerzero-xiaozhi_0.2.2-m5stack1_arm64.deb
 ```
 
 ### Cross-compile from macOS (aarch64)
@@ -74,8 +74,8 @@ python3 -m pip install websockets
 
 Every push to `main` or `ci/**` branches triggers an automatic arm64 `.deb` build
 and publishes a prerelease. Tagged pushes (`v*`) attach the `.deb` to the release,
-with the package version derived from the tag name, so `v0.2.1` builds
-`cardputerzero-xiaozhi_0.2.1-..._arm64.deb`.
+with the package version derived from the tag name, so `v0.2.2` builds
+`cardputerzero-xiaozhi_0.2.2-..._arm64.deb`.
 
 Pre-built packages are available on the [Releases](https://github.com/JdaieLin/cardputer-xiaozhi/releases) page.
 
@@ -88,9 +88,9 @@ Recommended publish flow:
 
 ```bash
 ./build.sh --device --package
-python3 /path/to/prepublish_check.py --deb build/cardputerzero-xiaozhi_0.2.1-m5stack1_arm64.deb --app-dir .
+python3 /path/to/prepublish_check.py --deb build/cardputerzero-xiaozhi_0.2.2-m5stack1_arm64.deb --app-dir .
 czdev login
-czdev publish --deb build/cardputerzero-xiaozhi_0.2.1-m5stack1_arm64.deb
+czdev publish --deb build/cardputerzero-xiaozhi_0.2.2-m5stack1_arm64.deb
 ```
 
 To regenerate the listing screenshots:
@@ -113,8 +113,8 @@ This script:
 ### Manual install
 
 ```bash
-scp build/cardputerzero-xiaozhi_0.2.1-m5stack1_arm64.deb pi@192.168.100.199:/tmp/
-ssh pi@192.168.100.199 "sudo dpkg -i /tmp/cardputerzero-xiaozhi_0.2.1-m5stack1_arm64.deb"
+scp build/cardputerzero-xiaozhi_0.2.2-m5stack1_arm64.deb pi@192.168.100.199:/tmp/
+ssh pi@192.168.100.199 "sudo dpkg -i /tmp/cardputerzero-xiaozhi_0.2.2-m5stack1_arm64.deb"
 ssh pi@192.168.100.199 "sudo systemctl restart APPLaunch.service"
 ```
 
