@@ -175,6 +175,40 @@ detect_fbdev() {
 }
 export XIAOZHI_FBDEV="$(detect_fbdev)"
 export XIAOZHI_KEYBOARD_DEVICE="${APPLAUNCH_LINUX_KEYBOARD_DEVICE:-/dev/input/by-path/platform-3f804000.i2c-event}"
+detect_user_home() {
+	local user_name=""
+	local user_home=""
+	if command -v getent >/dev/null 2>&1; then
+		user_name="$(getent passwd 1000 | cut -d: -f1)"
+		user_home="$(getent passwd 1000 | cut -d: -f6)"
+	fi
+	if [ -z "$user_name" ] && command -v id >/dev/null 2>&1; then
+		user_name="$(id -nu 1000 2>/dev/null || true)"
+	fi
+	if [ -z "$user_home" ] && [ -n "$user_name" ]; then
+		user_home="$(eval echo "~$user_name" 2>/dev/null || true)"
+	fi
+	if [ -n "$user_home" ] && [ -d "$user_home" ]; then
+		echo "$user_home"
+		return 0
+	fi
+	return 1
+}
+XIAOZHI_USER_HOME="$(detect_user_home || true)"
+if [ -z "$XIAOZHI_USER_HOME" ]; then
+	echo "[launcher] unable to detect uid 1000 home directory" >&2
+	exit 1
+fi
+XIAOZHI_IDENTITY_DIR="$XIAOZHI_USER_HOME/.config/xiaozhi"
+mkdir -p "$XIAOZHI_IDENTITY_DIR"
+if [ ! -f "$XIAOZHI_IDENTITY_DIR/sim_identity.env" ]; then
+	if [ -f /tmp/cardputer-xiaozhi-device/sim_identity.env ]; then
+		cp /tmp/cardputer-xiaozhi-device/sim_identity.env "$XIAOZHI_IDENTITY_DIR/sim_identity.env"
+	elif [ -f "$XIAOZHI_USER_HOME/cardputer-xiaozhi-device/sim_identity.env" ]; then
+		cp "$XIAOZHI_USER_HOME/cardputer-xiaozhi-device/sim_identity.env" "$XIAOZHI_IDENTITY_DIR/sim_identity.env"
+	fi
+fi
+cd "$XIAOZHI_IDENTITY_DIR" || exit 1
 LOCK_DIR="/tmp/xiaozhi_singleton.lock"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
 	exit 0

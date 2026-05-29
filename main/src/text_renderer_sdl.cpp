@@ -90,6 +90,8 @@ TTF_Font* getFont(const std::vector<std::string>& paths, int px, bool bold) {
 
 std::vector<std::string> normalFontCandidates() {
     return {
+        "/usr/share/APPLaunch/share/xiaozhi/fonts/NotoSansSC-Regular.ttf",
+        "/usr/share/APPLaunch/share/xiaozhi/fonts/NotoSansSC-Bold.ttf",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJKSC-Regular.otf",
         "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
@@ -100,6 +102,7 @@ std::vector<std::string> normalFontCandidates() {
 
 std::vector<std::string> emojiFontCandidates() {
     return {
+        "/usr/share/APPLaunch/share/xiaozhi/fonts/NotoColorEmoji.ttf",
         "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
         "/usr/share/fonts/truetype/ancient-scripts/Symbola_hint.ttf",
     };

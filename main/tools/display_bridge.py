@@ -36,6 +36,8 @@ SNAPSHOT_PATH = os.environ.get("XIAOZHI_RENDER_PNG_PATH", "")
 _FONT_SEARCH = [
     os.path.join(REPO_ROOT, "tools", "fonts", "NotoSansSC-Regular.ttf"),
     os.path.join(REPO_ROOT, "tools", "fonts", "NotoSansSC-Bold.ttf"),
+    "/usr/share/APPLaunch/share/xiaozhi/fonts/NotoSansSC-Regular.ttf",
+    "/usr/share/APPLaunch/share/xiaozhi/fonts/NotoSansSC-Bold.ttf",
     "/usr/share/fonts/truetype/xiaozhi/NotoSansSC-Regular.ttf",
     "/usr/share/fonts/truetype/xiaozhi/NotoSansSC-Bold.ttf",
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
@@ -52,6 +54,7 @@ _FONT_SEARCH = [
 
 _EMOJI_FONT_SEARCH = [
     os.path.join(REPO_ROOT, "tools", "fonts", "NotoColorEmoji.ttf"),
+    "/usr/share/APPLaunch/share/xiaozhi/fonts/NotoColorEmoji.ttf",
     "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
     "/usr/share/fonts/opentype/noto/NotoColorEmoji.ttf",
     "/usr/share/fonts/truetype/xiaozhi/NotoColorEmoji.ttf",

@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstring>
 #include <cstdlib>
+#include <fstream>
 #include <fcntl.h>
 #include <iostream>
 #include <signal.h>
@@ -66,6 +67,10 @@ std::vector<std::string> candidateDeviceNames(int is_capture) {
     }
 
     append_matches([](const std::string& name) {
+        return containsIgnoreCase(name, "es8389");
+    });
+
+    append_matches([](const std::string& name) {
         return containsIgnoreCase(name, "es8388");
     });
 
@@ -98,6 +103,26 @@ SDL_AudioDeviceID openPreferredDevice(int is_capture,
         *chosen_name = "<default>";
     }
     return device;
+}
+
+std::string preferredExternalCaptureDevice() {
+    const char* env_device = std::getenv("XIAOZHI_ALSA_CAPTURE_DEVICE");
+    if (env_device != nullptr && env_device[0] != '\0') {
+        return env_device;
+    }
+
+    std::ifstream cards("/proc/asound/cards");
+    if (cards.good()) {
+        std::string text((std::istreambuf_iterator<char>(cards)), std::istreambuf_iterator<char>());
+        if (containsIgnoreCase(text, "ES8389Audio")) {
+            return "plughw:CARD=ES8389Audio,DEV=0";
+        }
+        if (containsIgnoreCase(text, "ES8388Audio")) {
+            return "plughw:CARD=ES8388Audio,DEV=0";
+        }
+    }
+
+    return "plughw:CARD=ES8388Audio,DEV=0";
 }
 
 }  // namespace
@@ -153,7 +178,8 @@ bool AudioPipelineSdl::init() {
     } else {
         capture_spec_.freq = kTargetRate;
         capture_spec_.channels = 1;
-        std::cout << "[audio-sdl] using external ALSA capture helper" << std::endl;
+        std::cout << "[audio-sdl] using external ALSA capture helper: "
+                  << preferredExternalCaptureDevice() << std::endl;
     }
 
     // ── playback ──────────────────────────────────────────────────
@@ -341,11 +367,12 @@ bool AudioPipelineSdl::startExternalCapture() {
     }
 
     if (pid == 0) {
+        const std::string capture_device = preferredExternalCaptureDevice();
         dup2(pipe_fd[1], STDOUT_FILENO);
         close(pipe_fd[0]);
         close(pipe_fd[1]);
         execlp("arecord", "arecord",
-               "-D", "plughw:CARD=ES8388Audio,DEV=0",
+               "-D", capture_device.c_str(),
                "-q",
                "-f", "S16_LE",
                "-r", "16000",
