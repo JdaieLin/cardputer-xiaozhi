@@ -11,12 +11,19 @@ for d in "$SCRIPT_DIR/fonts" "/usr/share/APPLaunch/share/xiaozhi/fonts"; do
     fi
 done
 FONT_DIR="/usr/share/fonts/truetype/xiaozhi"
+VENDOR_DIR=""
+for d in "$SCRIPT_DIR/../main/tools/vendor" "$SCRIPT_DIR/vendor" "/usr/share/APPLaunch/share/xiaozhi/vendor"; do
+    if [ -d "$d/opuslib" ]; then
+        VENDOR_DIR="$d"
+        break
+    fi
+done
 
 echo "=== XiaoZhi App Launcher installer ==="
 
 # ── system packages ──────────────────────────────────────────────
 echo "[1/4] Installing system packages..."
-SYSTEM_PKGS="libsdl2-dev libsdl2-ttf-dev python3 python3-pip python3-pil fonts-noto-cjk fonts-noto-color-emoji"
+SYSTEM_PKGS="libsdl2-dev libsdl2-ttf-dev libopus0 python3 python3-pil python3-websockets fonts-noto-cjk fonts-noto-color-emoji"
 NEED_INSTALL=""
 
 for pkg in $SYSTEM_PKGS; do
@@ -36,21 +43,26 @@ else
     echo "  ✓ all system packages present"
 fi
 
-# ── Python packages ─────────────────────────────────────────────
-echo "[2/4] Installing Python packages..."
-PYTHON_PKGS="websockets opuslib"
-for pkg in $PYTHON_PKGS; do
-    if ! python3 -c "import $pkg" 2>/dev/null; then
-        echo "  → installing: $pkg"
-        if [ "$(id -u)" -eq 0 ]; then
-            pip3 install --break-system-packages "$pkg"
-        else
-            sudo pip3 install --break-system-packages "$pkg"
-        fi
-    else
-        echo "  ✓ $pkg"
-    fi
-done
+# ── Python dependencies ────────────────────────────────────────
+echo "[2/4] Verifying Python dependencies..."
+if python3 -c "import websockets" 2>/dev/null; then
+    echo "  ✓ websockets"
+else
+    echo "  ✗ websockets missing (expected from system package: python3-websockets)"
+    exit 1
+fi
+
+if [ -z "$VENDOR_DIR" ]; then
+    echo "  ✗ vendored opuslib directory not found"
+    exit 1
+fi
+
+if python3 -c "import sys; sys.path.insert(0, '$VENDOR_DIR'); import opuslib" 2>/dev/null; then
+    echo "  ✓ opuslib (vendored)"
+else
+    echo "  ✗ vendored opuslib import failed from $VENDOR_DIR"
+    exit 1
+fi
 
 # ── Fonts ────────────────────────────────────────────────────────
 echo "[3/4] Checking fonts..."
@@ -159,11 +171,13 @@ echo "  → initializing ES8388 mixer..."
 amixer -c 1 sset 'ADC MUX' AMIC 2>/dev/null || true
 amixer -c 1 sset 'PGAL Select' 'DifferentialL' 2>/dev/null || true
 amixer -c 1 sset 'PGAR Select' 'DifferentialR' 2>/dev/null || true
+amixer -c 1 sset 'ADCL' 220 2>/dev/null || true
+amixer -c 1 sset 'ADCR' 220 2>/dev/null || true
 amixer -c 1 sset 'ADCL PGA' 14 2>/dev/null || true
 amixer -c 1 sset 'ADCR PGA' 14 2>/dev/null || true
 amixer -c 1 sset 'DACL' 200 2>/dev/null || true
 amixer -c 1 sset 'DACR' 200 2>/dev/null || true
-amixer -c 1 sset 'ADC2DAC Mixer' 127 2>/dev/null || true
+amixer -c 1 sset 'ADC2DAC Mixer' 0 2>/dev/null || true
 amixer -c 1 sset 'OUTL MUX' Normal 2>/dev/null || true
 amixer -c 1 sset 'OUTR MUX' Normal 2>/dev/null || true
 

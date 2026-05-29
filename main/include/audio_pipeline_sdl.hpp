@@ -24,7 +24,8 @@ public:
     bool hasPlaybackDevice() const override;
 
 private:
-    void closeDebugCapture();
+    void closeTtsDebugCapture();
+    void closeMicDebugCapture();
     bool startExternalCapture();
     void stopExternalCapture();
     bool useExternalCapture() const;
@@ -37,8 +38,10 @@ private:
     bool external_capture_ = false;
     int capture_pipe_fd_ = -1;
     pid_t capture_pid_ = -1;
-    FILE* debug_raw_ = nullptr;
-    int debug_raw_count_ = 0;
+    FILE* tts_debug_raw_ = nullptr;
+    int tts_debug_raw_count_ = 0;
+    FILE* mic_debug_raw_ = nullptr;
+    int mic_debug_raw_count_ = 0;
     int total_tts_frames_ = 0;
 };
 

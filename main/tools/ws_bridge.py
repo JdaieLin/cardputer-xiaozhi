@@ -3,9 +3,14 @@ import argparse
 import asyncio
 import base64
 import json
+import os
 import ssl
 import sys
 from typing import Any
+
+VENDOR_DIR = os.path.join(os.path.dirname(__file__), "vendor")
+if VENDOR_DIR not in sys.path:
+    sys.path.insert(0, VENDOR_DIR)
 
 try:
     import opuslib

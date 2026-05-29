@@ -35,6 +35,7 @@ bool Application::start() {
     last_ui_refresh_ = std::chrono::steady_clock::now();
 
     ws_->setOnServerText([this](const std::string& msg) {
+        std::cout << "[stt] " << msg << std::endl;
         if (state_ == AppState::Listening && audio_->isCapturing()) {
             audio_->stopCapture();
             setState(AppState::Thinking, "server vad stop waiting response", true);

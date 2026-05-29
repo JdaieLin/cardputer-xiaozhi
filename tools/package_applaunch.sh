@@ -81,12 +81,15 @@ mkdir -p \
 	"$PKG_ROOT/usr/share/APPLaunch/applications" \
 	"$PKG_ROOT/usr/share/APPLaunch/bin" \
 	"$PKG_ROOT/usr/share/APPLaunch/share/images" \
-	"$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi"
+	"$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi" \
+	"$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/vendor"
 
 install -m 0755 "$BIN" "$PKG_ROOT/usr/share/APPLaunch/bin/$BIN_NAME"
 install -m 0644 "$ROOT_DIR/main/tools/ws_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/ws_bridge.py"
 install -m 0644 "$ROOT_DIR/main/tools/display_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/display_bridge.py"
 install -m 0755 "$ROOT_DIR/tools/install.sh" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/install.sh"
+cp -R "$ROOT_DIR/main/tools/vendor/opuslib" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/vendor/"
+install -m 0644 "$ROOT_DIR/main/tools/vendor/opuslib.LICENSE" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/vendor/opuslib.LICENSE"
 if [[ ! -f "$ICON_SRC" ]]; then
 	echo "missing icon: $ICON_SRC"
 	exit 1
@@ -147,11 +150,17 @@ unset XIAOZHI_AUDIO_PLAYBACK_DEVICE
 amixer -c 1 sset 'ADC MUX' AMIC 2>/dev/null || true
 amixer -c 1 sset 'PGAL Select' 'DifferentialL' 2>/dev/null || true
 amixer -c 1 sset 'PGAR Select' 'DifferentialR' 2>/dev/null || true
+# Keep capture gain high enough for speech, but avoid the aggressive
+# full-scale level that can hold server VAD open and cause timeouts.
+amixer -c 1 sset 'ADCL' 220 2>/dev/null || true
+amixer -c 1 sset 'ADCR' 220 2>/dev/null || true
 amixer -c 1 sset 'ADCL PGA' 14 2>/dev/null || true
 amixer -c 1 sset 'ADCR PGA' 14 2>/dev/null || true
 amixer -c 1 sset 'DACL' 200 2>/dev/null || true
 amixer -c 1 sset 'DACR' 200 2>/dev/null || true
-amixer -c 1 sset 'ADC2DAC Mixer' 127 2>/dev/null || true
+# Disable ADC-to-DAC sidetone to avoid feeding mic noise back into the
+# speaker path, which can confuse server-side VAD.
+amixer -c 1 sset 'ADC2DAC Mixer' 0 2>/dev/null || true
 amixer -c 1 sset 'OUTL MUX' Normal 2>/dev/null || true
 amixer -c 1 sset 'OUTR MUX' Normal 2>/dev/null || true
 wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 2>/dev/null || true
@@ -266,6 +275,17 @@ Priority: optional
 Homepage: $HOMEPAGE_URL
 Description: $DESCRIPTION for M5Cardputer Zero
 EOF
+
+cat > "$PKG_ROOT/DEBIAN/postinst" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+INSTALLER="/usr/share/APPLaunch/share/xiaozhi/install.sh"
+if [ -x "$INSTALLER" ]; then
+	"$INSTALLER"
+fi
+EOF
+chmod 0755 "$PKG_ROOT/DEBIAN/postinst"
 
 make_ustar_gz "$PKG_ROOT/DEBIAN" "$BUILD_DIR/control.tar.gz" .
 make_ustar_gz "$PKG_ROOT" "$BUILD_DIR/data.tar.gz" --exclude ./DEBIAN .

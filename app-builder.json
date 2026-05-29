@@ -54,10 +54,10 @@
     "app": {
       "service": false,
       "dependencies": [
+        "libopus0",
         "python3",
-        "websockets",
-        "opuslib",
-        "pillow"
+        "python3-websockets",
+        "python3-pil"
       ],
       "external_hardware": {
         "required": false,

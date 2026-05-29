@@ -43,8 +43,7 @@ cardputer-xiaozhi/
 
 ```bash
 # On the Pi:
-sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev fonts-noto-cjk fonts-noto-color-emoji python3-pip
-sudo pip3 install --break-system-packages websockets opuslib pillow
+sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libopus0 fonts-noto-cjk fonts-noto-color-emoji python3 python3-pil python3-websockets
 ./build.sh --device
 ```
 
@@ -65,8 +64,8 @@ brew install zig
 ### Local simulator (macOS)
 
 ```bash
-brew install sdl2
-pip3 install websockets opuslib
+brew install sdl2 opus
+python3 -m pip install websockets
 ./build.sh --sim
 ./build/xiaozhi_simulator
 ```
@@ -107,7 +106,7 @@ To regenerate the listing screenshots:
 ```
 
 This script:
-1. Installs system dependencies and Python packages on the Pi
+1. Installs system dependencies on the Pi and verifies vendored Python dependencies
 2. Uploads source and builds `--device --package` on the Pi
 3. Installs the `.deb` with `dpkg -i` and restarts `APPLaunch.service`
 

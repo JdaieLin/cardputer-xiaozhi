@@ -20,9 +20,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential pkg-config fakeroot \
-            libsdl2-dev libsdl2-ttf-dev dpkg-dev \
+            libsdl2-dev libsdl2-ttf-dev dpkg-dev libopus0 \
             fonts-noto-cjk fonts-noto-color-emoji \
-            python3-pip python3-pil
+            python3-pil python3-websockets
 
       - name: Build .deb
         run: |
