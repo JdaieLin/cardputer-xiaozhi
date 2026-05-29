@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SKIP_APT="${XIAOZHI_INSTALL_SKIP_APT:-0}"
 # Bundled fonts may be next to install.sh (CI artifact) or inside .deb install path
 BUNDLED_FONTS=""
 for d in "$SCRIPT_DIR/fonts" "/usr/share/APPLaunch/share/xiaozhi/fonts"; do
@@ -23,7 +24,7 @@ echo "=== XiaoZhi App Launcher installer ==="
 
 # ── system packages ──────────────────────────────────────────────
 echo "[1/4] Installing system packages..."
-SYSTEM_PKGS="libsdl2-dev libsdl2-ttf-dev libopus0 python3 python3-pil python3-websockets fonts-noto-cjk fonts-noto-color-emoji"
+SYSTEM_PKGS="libsdl2-2.0-0 libsdl2-ttf-2.0-0 libopus0 python3 python3-pil python3-websockets pipewire pipewire-pulse wireplumber"
 NEED_INSTALL=""
 
 for pkg in $SYSTEM_PKGS; do
@@ -32,7 +33,13 @@ for pkg in $SYSTEM_PKGS; do
     fi
 done
 
-if [ -n "$NEED_INSTALL" ]; then
+if [ "$SKIP_APT" = "1" ]; then
+    if [ -n "$NEED_INSTALL" ]; then
+        echo "  → skipping apt install during package configuration; expected dependencies:$NEED_INSTALL"
+    else
+        echo "  ✓ all system packages present"
+    fi
+elif [ -n "$NEED_INSTALL" ]; then
     echo "  → installing:$NEED_INSTALL"
     if [ "$(id -u)" -eq 0 ]; then
         apt-get update -qq && apt-get install -y $NEED_INSTALL
@@ -115,11 +122,15 @@ if [ "$FONT_OK" -eq 0 ] || [ "$EMOJI_OK" -eq 0 ]; then
             echo "  → fetching NotoSansSC-Bold.ttf from Google Fonts..."
             curl -fsSLo "$FONT_DIR/NotoSansSC-Bold.ttf" \
                 "https://github.com/google/fonts/raw/main/ofl/notosanssc/static/NotoSansSC-Bold.ttf" 2>/dev/null || {
-                echo "  ⚠ font download failed, trying apt fallback..."
-                if [ "$(id -u)" -eq 0 ]; then
-                    apt-get install -y fonts-noto-cjk 2>/dev/null || true
+                if [ "$SKIP_APT" = "1" ]; then
+                    echo "  ⚠ font download failed; skipping apt fallback during package configuration"
                 else
-                    sudo apt-get install -y fonts-noto-cjk 2>/dev/null || true
+                    echo "  ⚠ font download failed, trying apt fallback..."
+                    if [ "$(id -u)" -eq 0 ]; then
+                        apt-get install -y fonts-noto-cjk 2>/dev/null || true
+                    else
+                        sudo apt-get install -y fonts-noto-cjk 2>/dev/null || true
+                    fi
                 fi
             }
         fi
@@ -133,11 +144,15 @@ if [ "$FONT_OK" -eq 0 ] || [ "$EMOJI_OK" -eq 0 ]; then
             echo "  → fetching NotoColorEmoji.ttf from Google Fonts..."
             curl -fsSLo "$FONT_DIR/NotoColorEmoji.ttf" \
                 "https://github.com/google/fonts/raw/main/ofl/notocoloremoji/NotoColorEmoji%5Bwght%5D.ttf" 2>/dev/null || {
-                echo "  ⚠ emoji font download failed, trying apt fallback..."
-                if [ "$(id -u)" -eq 0 ]; then
-                    apt-get install -y fonts-noto-color-emoji 2>/dev/null || true
+                if [ "$SKIP_APT" = "1" ]; then
+                    echo "  ⚠ emoji font download failed; skipping apt fallback during package configuration"
                 else
-                    sudo apt-get install -y fonts-noto-color-emoji 2>/dev/null || true
+                    echo "  ⚠ emoji font download failed, trying apt fallback..."
+                    if [ "$(id -u)" -eq 0 ]; then
+                        apt-get install -y fonts-noto-color-emoji 2>/dev/null || true
+                    else
+                        sudo apt-get install -y fonts-noto-color-emoji 2>/dev/null || true
+                    fi
                 fi
             }
         fi
@@ -156,25 +171,29 @@ echo "[4/4] Verifying installation..."
 echo "  ✓ xiaozhi_app: $(which xiaozhi_app 2>/dev/null || echo /usr/share/APPLaunch/bin/xiaozhi_app)"
 
 # ── Ensure PipeWire is present for audio ──
-echo "  → installing PipeWire audio..."
-if [ "$(id -u)" -eq 0 ]; then
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        pipewire pipewire-pulse wireplumber 2>/dev/null || true
+if [ "$SKIP_APT" = "1" ]; then
+    echo "  → skipping PipeWire apt install during package configuration"
 else
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        pipewire pipewire-pulse wireplumber 2>/dev/null || true
+    echo "  → installing PipeWire audio..."
+    if [ "$(id -u)" -eq 0 ]; then
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            pipewire pipewire-pulse wireplumber 2>/dev/null || true
+    else
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            pipewire pipewire-pulse wireplumber 2>/dev/null || true
+    fi
 fi
 echo "  ✓ PipeWire ready"
 
-# ── ES8388 mixer: boost mic gain and output volume ──
-echo "  → initializing ES8388 mixer..."
+# ── ES8389 mixer: set capture gain and output volume ──
+echo "  → initializing ES8389 mixer..."
 amixer -c 1 sset 'ADC MUX' AMIC 2>/dev/null || true
 amixer -c 1 sset 'PGAL Select' 'DifferentialL' 2>/dev/null || true
 amixer -c 1 sset 'PGAR Select' 'DifferentialR' 2>/dev/null || true
-amixer -c 1 sset 'ADCL' 220 2>/dev/null || true
-amixer -c 1 sset 'ADCR' 220 2>/dev/null || true
-amixer -c 1 sset 'ADCL PGA' 14 2>/dev/null || true
-amixer -c 1 sset 'ADCR PGA' 14 2>/dev/null || true
+amixer -c 1 sset 'ADCL' 160 2>/dev/null || true
+amixer -c 1 sset 'ADCR' 160 2>/dev/null || true
+amixer -c 1 sset 'ADCL PGA' 6 2>/dev/null || true
+amixer -c 1 sset 'ADCR PGA' 6 2>/dev/null || true
 amixer -c 1 sset 'DACL' 200 2>/dev/null || true
 amixer -c 1 sset 'DACR' 200 2>/dev/null || true
 amixer -c 1 sset 'ADC2DAC Mixer' 0 2>/dev/null || true
@@ -188,7 +207,7 @@ if command -v wpctl >/dev/null 2>&1; then
     wpctl set-mute @DEFAULT_AUDIO_SOURCE@ 0 2>/dev/null || true
     wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 1.0 2>/dev/null || true
 fi
-echo "  ✓ ES8388 mixer configured"
+echo "  ✓ ES8389 mixer configured"
 echo ""
 echo "=== Installation complete ==="
 echo ""

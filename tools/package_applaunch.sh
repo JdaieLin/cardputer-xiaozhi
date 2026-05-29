@@ -146,16 +146,16 @@ unset AUDIODEV
 unset XIAOZHI_AUDIO_CAPTURE_DEVICE
 unset XIAOZHI_AUDIO_PLAYBACK_DEVICE
 
-# Initialize ES8388 codec mixer (PGA gain, output volume, routing)
+# Initialize ES8389 codec mixer (capture gain, output volume, routing)
 amixer -c 1 sset 'ADC MUX' AMIC 2>/dev/null || true
 amixer -c 1 sset 'PGAL Select' 'DifferentialL' 2>/dev/null || true
 amixer -c 1 sset 'PGAR Select' 'DifferentialR' 2>/dev/null || true
-# Keep capture gain high enough for speech, but avoid the aggressive
-# full-scale level that can hold server VAD open and cause timeouts.
-amixer -c 1 sset 'ADCL' 220 2>/dev/null || true
-amixer -c 1 sset 'ADCR' 220 2>/dev/null || true
-amixer -c 1 sset 'ADCL PGA' 14 2>/dev/null || true
-amixer -c 1 sset 'ADCR PGA' 14 2>/dev/null || true
+# ES8389 needs a more conservative analog front-end than the earlier
+# full-scale settings, otherwise the mic path turns into sustained noise.
+amixer -c 1 sset 'ADCL' 160 2>/dev/null || true
+amixer -c 1 sset 'ADCR' 160 2>/dev/null || true
+amixer -c 1 sset 'ADCL PGA' 6 2>/dev/null || true
+amixer -c 1 sset 'ADCR PGA' 6 2>/dev/null || true
 amixer -c 1 sset 'DACL' 200 2>/dev/null || true
 amixer -c 1 sset 'DACR' 200 2>/dev/null || true
 # Disable ADC-to-DAC sidetone to avoid feeding mic noise back into the
@@ -273,6 +273,7 @@ Maintainer: $MAINTAINER_NAME <$MAINTAINER_EMAIL>
 Section: APPLaunch
 Priority: optional
 Homepage: $HOMEPAGE_URL
+Depends: libsdl2-2.0-0, libsdl2-ttf-2.0-0, libopus0, python3, python3-pil, python3-websockets, pipewire, pipewire-pulse, wireplumber
 Description: $DESCRIPTION for M5Cardputer Zero
 EOF
 
@@ -282,7 +283,7 @@ set -euo pipefail
 
 INSTALLER="/usr/share/APPLaunch/share/xiaozhi/install.sh"
 if [ -x "$INSTALLER" ]; then
-	"$INSTALLER"
+	XIAOZHI_INSTALL_SKIP_APT=1 "$INSTALLER"
 fi
 EOF
 chmod 0755 "$PKG_ROOT/DEBIAN/postinst"
