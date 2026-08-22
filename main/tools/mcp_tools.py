@@ -510,7 +510,7 @@ class McpTools:
             result = {
                 "protocolVersion": params.get("protocolVersion", "2024-11-05"),
                 "capabilities": {"tools": {"listChanged": True}},
-                "serverInfo": {"name": "cardputer-xiaozhi", "version": "0.2.3"},
+                "serverInfo": {"name": "cardputer-xiaozhi", "version": "0.2.4"},
             }
         elif method == "tools/list":
             result = {

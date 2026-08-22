@@ -243,7 +243,8 @@ void Application::renderUi() {
         return;
     }
     last_ui_refresh_ = now;
-    ui_->renderState(state_, display_text_.empty() ? status_text_ : display_text_, current_emoji_);
+    const std::string& emoji = terminal_text_.empty() ? current_emoji_ : "🤔";
+    ui_->renderState(state_, display_text_.empty() ? status_text_ : display_text_, emoji);
 }
 
 void Application::startListening(bool preserve_display) {
