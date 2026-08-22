@@ -13,6 +13,7 @@ public:
     ~DisplayBridge() override;
 
     bool init() override;
+    void setTerminalText(const std::string& text) override;
     void renderState(AppState state, const std::string& text, const std::string& emoji) override;
 
     void disconnect();
@@ -24,6 +25,7 @@ private:
     int child_stdout_fd_ = -1;
     int child_pid_ = -1;
     bool connected_ = false;
+    std::string terminal_text_;
 };
 
 }  // namespace xiaozhi

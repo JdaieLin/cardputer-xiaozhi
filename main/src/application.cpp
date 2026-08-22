@@ -55,7 +55,10 @@ bool Application::start() {
         if (msg.empty()) {
             return;
         }
-        tts_text_buffer_ += msg;
+        // sentence_start already carries the complete sentence. Replacing the
+        // previous sentence keeps subtitles aligned with the current audio;
+        // accumulating them makes the line scroller lag several sentences.
+        tts_text_buffer_ = msg;
         updateDisplayMessage(tts_text_buffer_);
     });
     ws_->setOnListenStop([this]() {
@@ -70,6 +73,11 @@ bool Application::start() {
         if (audio_->isCapturing()) {
             audio_->stopCapture();
         }
+        // Tool progress is useful while waiting, but must not linger over the
+        // spoken response. The bridge's delayed clear remains as a fallback.
+        terminal_text_.clear();
+        ui_->setTerminalText(terminal_text_);
+        tts_text_buffer_.clear();
         setState(AppState::Speaking, "tts start", true);
     });
     ws_->setOnTtsPcm([this](const std::vector<int16_t>& pcm) {
@@ -86,6 +94,11 @@ bool Application::start() {
         keep_listening_ = false;
         setState(AppState::Idle, "server ended conversation", true);
     });
+    ws_->setOnToolProgress([this](const std::string& text) {
+        terminal_text_ = text;
+        ui_->setTerminalText(terminal_text_);
+        renderUi();
+    });
     ws_->setOnDisconnected([this]() { handleBackendDisconnected(); });
 
     running_ = true;
@@ -100,6 +113,8 @@ bool Application::start() {
     status_text_.clear();
     display_text_.clear();
     current_emoji_.clear();
+    terminal_text_.clear();
+    ui_->setTerminalText(terminal_text_);
 
     if (!audio_->init()) {
         std::cerr << "[app] audio init failed, running without sound I/O" << std::endl;

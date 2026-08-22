@@ -16,12 +16,19 @@ import struct
 import traceback
 import select
 import time
+from io import BytesIO
 
 try:
     from PIL import Image, ImageDraw, ImageFont
 except ImportError:
     print(json.dumps({"event": "error", "text": "missing dependency: PIL (pillow)"}))
     sys.exit(1)
+
+# CairoSVG has a comparatively expensive import on small Raspberry Pi models.
+# Load it only when an SVG emoji is actually needed so the display handshake is
+# not held up by an optional renderer.
+_cairosvg = None
+_cairosvg_checked = False
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
@@ -62,6 +69,12 @@ _EMOJI_FONT_SEARCH = [
     "/System/Library/Fonts/Apple Color Emoji.ttc",
 ]
 
+_EMOJI_SVG_SEARCH = [
+    os.path.join(REPO_ROOT, "tools", "emoji_svg"),
+    "/usr/share/APPLaunch/share/xiaozhi/emoji_svg",
+]
+_emoji_svg_dir = next((p for p in _EMOJI_SVG_SEARCH if os.path.isdir(p)), "")
+
 _font_path = ""
 for p in _FONT_SEARCH:
     if os.path.exists(p):
@@ -85,6 +98,7 @@ _status_font = ImageFont.truetype(_font_path, 18)
 _text_font = ImageFont.truetype(_font_path, 16)
 _code_font = ImageFont.truetype(_font_path, 34)
 _small_font = ImageFont.truetype(_font_path, 14)
+_terminal_font = ImageFont.truetype(_font_path, 9)
 
 
 def _load_emoji_font(path, fallback_path):
@@ -118,6 +132,50 @@ def _normalize_emoji(s):
         return "😄"
     # Strip text/emoji variation selectors; they can cause fallback glyph artifacts on some stacks.
     return s.replace("\ufe0f", "").replace("\ufe0e", "")
+
+
+_emoji_svg_cache = {}
+
+
+def _get_cairosvg():
+    global _cairosvg, _cairosvg_checked
+    if not _cairosvg_checked:
+        _cairosvg_checked = True
+        try:
+            import cairosvg as module
+            _cairosvg = module
+        except ImportError:
+            _cairosvg = None
+    return _cairosvg
+
+
+def _emoji_svg_image(emoji, size):
+    """Render the same SVG emoji artwork used by whisplay-xiaozhi."""
+    if not emoji or not _emoji_svg_dir:
+        return None
+    normalized = emoji.replace("\ufe0e", "").replace("\ufe0f", "")
+    candidates = [emoji, normalized]
+    if normalized:
+        candidates.append(normalized[0])
+    for candidate in candidates:
+        filename = "-".join(f"{ord(char):x}" for char in candidate) + ".svg"
+        path = os.path.join(_emoji_svg_dir, filename)
+        if not os.path.isfile(path):
+            continue
+        key = (path, size)
+        if key in _emoji_svg_cache:
+            return _emoji_svg_cache[key].copy()
+        try:
+            cairosvg = _get_cairosvg()
+            if cairosvg is None:
+                return None
+            png = cairosvg.svg2png(url=path, output_width=size, output_height=size)
+            image = Image.open(BytesIO(png)).convert("RGBA")
+            _emoji_svg_cache[key] = image
+            return image.copy()
+        except Exception:
+            return None
+    return None
 
 
 def img_to_rgb565(img):
@@ -154,8 +212,8 @@ _line_wrap_lines = []
 _line_wrap_line = 0
 _line_wrap_next_ts = 0.0
 _line_wrap_current_text = ""
-_LINE_SHOW_S = 2.0
-_LINE_EXTEND_S = 1.0
+_LINE_SHOW_S = 1.6
+_LINE_EXTEND_S = 0.3
 
 
 def fb_open():
@@ -200,11 +258,11 @@ def _wrap_text(text, font, max_width):
     return lines or [text]
 
 
-def render_frame(status, emoji, text, code):
+def render_frame(status, emoji, text, code, terminal):
     """Render a full frame and write to framebuffer."""
     global _last_frame_key
     global _line_wrap_lines, _line_wrap_line, _line_wrap_next_ts, _line_wrap_current_text
-    img = Image.new("RGBA", (WIDTH, HEIGHT), (220, 225, 235, 255))
+    img = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 255))
     draw = ImageDraw.Draw(img, "RGBA")
 
     header_h = 36
@@ -218,8 +276,13 @@ def render_frame(status, emoji, text, code):
 
     # Emoji
     emoji = _normalize_emoji(emoji)
-    emoji_target = 29
-    if _emoji_use_embedded:
+    emoji_target = 40
+    svg_emoji = _emoji_svg_image(emoji, emoji_target)
+    if svg_emoji is not None:
+        ex = WIDTH - svg_emoji.width - 8
+        ey = header_h + 7
+        img.alpha_composite(svg_emoji, (ex, ey))
+    elif _emoji_use_embedded:
         # Render color glyph then resize with alpha-safe nearest sampling to avoid dark fringes.
         scratch = Image.new("RGBA", (160, 160), (0, 0, 0, 0))
         sdraw = ImageDraw.Draw(scratch, "RGBA")
@@ -243,24 +306,47 @@ def render_frame(status, emoji, text, code):
         ey = header_h + 6
         draw.text((ex, ey), emoji, font=_emoji_font, fill=(255, 255, 255, 255))
 
-    # Status label
-    draw.text((8, 43), status, font=_status_font, fill=(20, 20, 40, 255))
+    # Tool output replaces the normal status/prompt text while the emoji stays
+    # in its original position on the right.
+    if terminal:
+        terminal_x = 8
+        terminal_y = 43
+        max_width = WIDTH - terminal_x - emoji_target - 24
+        raw_lines = terminal.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        lines = [line for line in raw_lines if line][-6:]
+        line_height = 11
+        for index, line in enumerate(lines):
+            clipped = line
+            while clipped and _terminal_font.getlength(clipped) > max_width:
+                clipped = clipped[:-1]
+            if clipped != line and len(clipped) > 3:
+                clipped = clipped[:-3] + "..."
+            draw.text(
+                (terminal_x, terminal_y + index * line_height),
+                clipped,
+                font=_terminal_font,
+                fill=(80, 255, 120, 255),
+            )
+    else:
+        draw.text((8, 43), status, font=_status_font, fill=(235, 240, 245, 255))
 
     # Content area
-    if status == "BINDING":
-        draw.text((8, 67), "Go to xiaozhi.me to bind", font=_small_font, fill=(80, 80, 120, 255))
+    if terminal:
+        pass
+    elif status == "BINDING":
+        draw.text((8, 67), "Go to xiaozhi.me to bind", font=_small_font, fill=(155, 160, 180, 255))
         if code and len(code) == 6:
             bbox = _code_font.getbbox(code)
             cw = bbox[2] - bbox[0]
-            draw.text(((WIDTH - cw) // 2, 92), code, font=_code_font, fill=(20, 20, 50, 255))
+            draw.text(((WIDTH - cw) // 2, 92), code, font=_code_font, fill=(235, 240, 255, 255))
     elif status == "IDLE":
-        draw.text((8, 67), "SPACE to talk", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((8, 67), "SPACE to talk", font=_small_font, fill=(155, 160, 180, 255))
     elif status == "LISTENING":
-        draw.text((8, 67), "Listening...", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((8, 67), "Listening...", font=_small_font, fill=(155, 160, 180, 255))
     elif status == "THINKING":
-        draw.text((8, 67), "Thinking...", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((8, 67), "Thinking...", font=_small_font, fill=(155, 160, 180, 255))
     elif status == "SPEAKING":
-        draw.text((8, 67), "Speaking...", font=_small_font, fill=(80, 80, 120, 255))
+        draw.text((8, 67), "Speaking...", font=_small_font, fill=(155, 160, 180, 255))
     elif status == "ERROR":
         draw.text((8, 67), "ERROR", font=_small_font, fill=(200, 40, 40, 255))
 
@@ -281,13 +367,11 @@ def render_frame(status, emoji, text, code):
             line_bucket = 0
         else:
             if text != _line_wrap_current_text:
-                prev_line = _line_wrap_line
                 _line_wrap_lines = _wrap_text(text, _text_font, avail_w)
                 _line_wrap_current_text = text
-                if _line_wrap_lines and prev_line < len(_line_wrap_lines):
-                    _line_wrap_line = prev_line
-                else:
-                    _line_wrap_line = 0
+                # A new TTS sentence must become visible immediately instead
+                # of inheriting the scroll position of the previous sentence.
+                _line_wrap_line = 0
                 _line_wrap_next_ts = time.monotonic() + _LINE_SHOW_S + _LINE_EXTEND_S
             else:
                 now = time.monotonic()
@@ -304,7 +388,7 @@ def render_frame(status, emoji, text, code):
         _line_wrap_line = 0
         line_bucket = 0
 
-    frame_key = (status, emoji, text, code, line_bucket)
+    frame_key = (status, emoji, text, code, terminal, line_bucket)
     global _last_frame_key
     if frame_key == _last_frame_key:
         img.close()
@@ -331,6 +415,7 @@ def main():
         "emoji": "😄",
         "text": "",
         "code": "",
+        "terminal": "",
         "has_frame": False,
     }
 
@@ -358,6 +443,7 @@ def main():
                     current["emoji"] = cmd.get("emoji", "😄")
                     current["text"] = cmd.get("text", "")
                     current["code"] = cmd.get("code", "")
+                    current["terminal"] = cmd.get("terminal", "")
                     current["has_frame"] = True
                 except Exception:
                     # write to stdout (NOT stderr) to allow C++ drain thread to consume it
@@ -365,7 +451,13 @@ def main():
 
         if current["has_frame"]:
             try:
-                render_frame(current["status"], current["emoji"], current["text"], current["code"])
+                render_frame(
+                    current["status"],
+                    current["emoji"],
+                    current["text"],
+                    current["code"],
+                    current["terminal"],
+                )
             except Exception:
                 traceback.print_exc(file=sys.stderr)
 

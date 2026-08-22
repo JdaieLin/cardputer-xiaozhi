@@ -3,6 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKIP_APT="${XIAOZHI_INSTALL_SKIP_APT:-0}"
+EMOJI_ASSET_URL="${XIAOZHI_EMOJI_ASSET_URL:-https://storage.whisplay.ai/whisplay-ai-chatbot/emoji_svg.zip}"
+EMOJI_SVG_DIR="$SCRIPT_DIR/emoji_svg"
 # Bundled fonts may be next to install.sh (CI artifact) or inside .deb install path
 BUNDLED_FONTS=""
 for d in "$SCRIPT_DIR/fonts" "/usr/share/APPLaunch/share/xiaozhi/fonts"; do
@@ -24,7 +26,7 @@ echo "=== XiaoZhi App Launcher installer ==="
 
 # ── system packages ──────────────────────────────────────────────
 echo "[1/4] Installing system packages..."
-SYSTEM_PKGS="libsdl2-2.0-0 libsdl2-ttf-2.0-0 libopus0 python3 python3-pil pipewire pipewire-pulse wireplumber"
+SYSTEM_PKGS="libsdl2-2.0-0 libsdl2-ttf-2.0-0 libopus0 python3 python3-pil python3-cairosvg curl unzip pipewire pipewire-pulse wireplumber"
 NEED_INSTALL=""
 
 for pkg in $SYSTEM_PKGS; do
@@ -164,6 +166,34 @@ if [ "$FONT_OK" -eq 0 ] || [ "$EMOJI_OK" -eq 0 ]; then
     fi
 else
     echo "  ✓ all fonts present"
+fi
+
+# Download the Whisplay emoji artwork at install time instead of storing it in git or .deb.
+if [ -s "$EMOJI_SVG_DIR/1f604.svg" ]; then
+    echo "  ✓ Whisplay SVG emoji artwork: $EMOJI_SVG_DIR"
+else
+    echo "  → downloading Whisplay SVG emoji artwork..."
+    EMOJI_TMP_DIR="$(mktemp -d)"
+    EMOJI_ZIP="$EMOJI_TMP_DIR/emoji_svg.zip"
+    CURL_PROXY_ARGS=()
+    if [ -n "${XIAOZHI_WEB_TOOL_PROXY:-}" ]; then
+        CURL_PROXY_ARGS=(--proxy "$XIAOZHI_WEB_TOOL_PROXY")
+    fi
+    if curl -fL --retry 2 --connect-timeout 10 --max-time 180 \
+        "${CURL_PROXY_ARGS[@]}" -o "$EMOJI_ZIP" "$EMOJI_ASSET_URL" && \
+        unzip -q -o "$EMOJI_ZIP" -d "$EMOJI_TMP_DIR/unpacked"; then
+        EXTRACTED_EMOJI_DIR="$(find "$EMOJI_TMP_DIR/unpacked" -type d -name emoji_svg -print -quit)"
+        if [ -n "$EXTRACTED_EMOJI_DIR" ] && [ -s "$EXTRACTED_EMOJI_DIR/1f604.svg" ]; then
+            rm -rf "$EMOJI_SVG_DIR"
+            cp -R "$EXTRACTED_EMOJI_DIR" "$EMOJI_SVG_DIR"
+            echo "  ✓ Whisplay SVG emoji artwork installed"
+        else
+            echo "  ⚠ downloaded emoji archive has an unexpected layout; using font fallback"
+        fi
+    else
+        echo "  ⚠ Whisplay SVG emoji download failed; using font fallback"
+    fi
+    rm -rf "$EMOJI_TMP_DIR"
 fi
 
 # ── Verify ───────────────────────────────────────────────────────

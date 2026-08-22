@@ -144,7 +144,9 @@ bool DisplayBridge::init() {
     std::cout << "[display-bridge] started, waiting for handshake" << std::endl;
 
     std::string line_buffer;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(4);
+    // Python/Pillow cold starts can be noticeably slower on memory-constrained
+    // Raspberry Pi models, especially while the system is launching the UI.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
     while (std::chrono::steady_clock::now() < deadline) {
         char buf[512];
         const ssize_t n = read(child_stdout_fd_, buf, sizeof(buf));
@@ -218,6 +220,10 @@ void DisplayBridge::sendJsonLine(const std::string& json_line) {
     static_cast<void>(n);
 }
 
+void DisplayBridge::setTerminalText(const std::string& text) {
+    terminal_text_ = text;
+}
+
 void DisplayBridge::renderState(AppState state, const std::string& text, const std::string& emoji) {
     if (!connected_) return;
 
@@ -241,6 +247,7 @@ void DisplayBridge::renderState(AppState state, const std::string& text, const s
     std::string json = "{\"cmd\":\"render\",\"status\":\"" + std::string(status_str) +
                        "\",\"emoji\":\"" + jsonEscape(emoji_val) +
                        "\",\"text\":\"" + jsonEscape(text) +
+                       "\",\"terminal\":\"" + jsonEscape(terminal_text_) +
                        "\",\"code\":\"" + (code.size() == 6 ? code : "") + "\"}";
     sendJsonLine(json);
 }

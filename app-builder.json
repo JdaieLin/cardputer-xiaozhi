@@ -1,6 +1,6 @@
 {
   "package_name": "cardputerzero-xiaozhi",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "revision": "m5stack1",
   "app_name": "XiaoZhi",
   "bin_name": "xiaozhi_app",
@@ -55,9 +55,12 @@
       "service": false,
       "dependencies": [
         "libopus0",
+        "curl",
+        "unzip",
         "python3",
         "python3-websockets",
-        "python3-pil"
+        "python3-pil",
+        "python3-cairosvg"
       ],
       "external_hardware": {
         "required": false,

@@ -10,6 +10,7 @@ class Ui {
 public:
     virtual ~Ui() = default;
     virtual bool init() = 0;
+    virtual void setTerminalText(const std::string& text) { (void)text; }
     virtual void renderState(AppState state, const std::string& text, const std::string& emoji) = 0;
 };
 

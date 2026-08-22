@@ -11,6 +11,9 @@ XiaoZhi voice assistant ported to M5Cardputer (Raspberry Pi Zero + framebuffer d
 - OTA activation code flow for xiaozhi.me binding
 - Push-to-talk (SPACE key) with server-side VAD
 - Continuous conversation mode (auto re-listen after TTS finishes)
+- MCP local command and web search tools
+- On-screen green terminal progress for tool calls
+- Whisplay-style SVG emoji artwork downloaded during installation, with font fallback
 - macOS simulator for local development
 
 ## Project layout
@@ -34,6 +37,7 @@ cardputer-xiaozhi/
     src/                         # C++ sources
     tools/
       display_bridge.py          # Python PIL framebuffer renderer
+      mcp_tools.py               # Safe local command + web search MCP tools
       ws_bridge.py               # Python WebSocket + Opus bridge
 ```
 
@@ -43,7 +47,7 @@ cardputer-xiaozhi/
 
 ```bash
 # On the Pi:
-sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libopus0 fonts-noto-cjk fonts-noto-color-emoji python3 python3-pil python3-websockets
+sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libopus0 fonts-noto-cjk python3 python3-pil python3-cairosvg curl unzip
 ./build.sh --device
 ```
 
@@ -51,7 +55,7 @@ sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libopus0 fonts-noto-cjk font
 
 ```bash
 ./build.sh --device --package
-# Output: build/cardputerzero-xiaozhi_0.2.2-m5stack1_arm64.deb
+# Output: build/cardputerzero-xiaozhi_0.2.3-m5stack1_arm64.deb
 ```
 
 ### Cross-compile from macOS (aarch64)
@@ -74,8 +78,8 @@ python3 -m pip install websockets
 
 Every push to `main` or `ci/**` branches triggers an automatic arm64 `.deb` build
 and publishes a prerelease. Tagged pushes (`v*`) attach the `.deb` to the release,
-with the package version derived from the tag name, so `v0.2.2` builds
-`cardputerzero-xiaozhi_0.2.2-..._arm64.deb`.
+with the package version derived from the tag name, so `v0.2.3` builds
+`cardputerzero-xiaozhi_0.2.3-..._arm64.deb`.
 
 Pre-built packages are available on the [Releases](https://github.com/JdaieLin/cardputer-xiaozhi/releases) page.
 
@@ -88,9 +92,9 @@ Recommended publish flow:
 
 ```bash
 ./build.sh --device --package
-python3 /path/to/prepublish_check.py --deb build/cardputerzero-xiaozhi_0.2.2-m5stack1_arm64.deb --app-dir .
+python3 /path/to/prepublish_check.py --deb build/cardputerzero-xiaozhi_0.2.3-m5stack1_arm64.deb --app-dir .
 czdev login
-czdev publish --deb build/cardputerzero-xiaozhi_0.2.2-m5stack1_arm64.deb
+czdev publish --deb build/cardputerzero-xiaozhi_0.2.3-m5stack1_arm64.deb
 ```
 
 To regenerate the listing screenshots:
@@ -113,8 +117,8 @@ This script:
 ### Manual install
 
 ```bash
-scp build/cardputerzero-xiaozhi_0.2.2-m5stack1_arm64.deb pi@192.168.100.199:/tmp/
-ssh pi@192.168.100.199 "sudo dpkg -i /tmp/cardputerzero-xiaozhi_0.2.2-m5stack1_arm64.deb"
+scp build/cardputerzero-xiaozhi_0.2.3-m5stack1_arm64.deb pi@192.168.100.199:/tmp/
+ssh pi@192.168.100.199 "sudo dpkg -i /tmp/cardputerzero-xiaozhi_0.2.3-m5stack1_arm64.deb"
 ssh pi@192.168.100.199 "sudo systemctl restart APPLaunch.service"
 ```
 
@@ -140,6 +144,41 @@ Key variables:
 - `XIAOZHI_WS_URL` — WebSocket server endpoint
 - `XIAOZHI_WS_TOKEN` — Authentication token
 - `XIAOZHI_DEVICE_ID` / `XIAOZHI_CLIENT_ID` — Device identity
+
+### MCP tools
+
+The WebSocket bridge advertises MCP support and registers these tools by default:
+
+- `local_command` — runs commands without a shell and returns stdout, stderr, and exit code.
+- `checkCommand` / `stopCommand` — inspect or stop commands that outlive the foreground timeout.
+- `web_search` — searches DuckDuckGo HTML, or Google News RSS with `search_type=news`.
+
+`local_command` is restricted to the allowlist in `XIAOZHI_LOCAL_COMMAND_ALLOWLIST`.
+Arbitrary commands require `XIAOZHI_LOCAL_COMMAND_ALLOW_DANGEROUS=true`; shell syntax
+additionally requires `XIAOZHI_LOCAL_COMMAND_USE_SHELL=true`. The legacy
+`XIAOZHI_LOCAL_COMMAND_UNSAFE` variable remains a compatibility alias. Tool progress is
+rendered as small green text in place of the normal status text while the emoji remains in
+its usual position. It clears as soon as speech starts, or five seconds after the last tool
+update when no spoken response follows.
+
+When dangerous mode is enabled, `XIAOZHI_LOCAL_COMMAND_SUDO_PASSWORD` may hold the local
+sudo password. If configured, the MCP tool description gives the model only the fixed
+`{{SUDO_PASSWORD}}` placeholder. A call such as
+`sudo {{SUDO_PASSWORD}} apt-get update` is executed as `sudo -S -p '' apt-get update`, with
+the secret written directly to stdin. The secret is removed from the Python environment,
+never inserted into the command line, and redacted from progress and tool results.
+The APPLaunch package loads device-private tool settings from
+`~/.config/xiaozhi/tools.env`; keep that file mode `0600` and do not package it.
+
+Web search uses `XIAOZHI_WEB_TOOL_PROXY=http://192.168.100.124:7890` by default in the
+packaged APPLaunch launcher. Override or clear that environment variable to use another
+proxy or a direct connection.
+
+Whisplay emoji SVG files are not stored in this repository or embedded in the `.deb`.
+During installation, `tools/install.sh` downloads `emoji_svg.zip` from Whisplay's asset
+server and extracts it beside `display_bridge.py`. Override the source with
+`XIAOZHI_EMOJI_ASSET_URL`; the renderer falls back to the bundled emoji font if the
+download is unavailable.
 
 ## Architecture
 

@@ -288,6 +288,10 @@ void WsClientStub::setOnGoodbye(std::function<void()> cb) {
     on_goodbye_ = std::move(cb);
 }
 
+void WsClientStub::setOnToolProgress(std::function<void(const std::string&)> cb) {
+    on_tool_progress_ = std::move(cb);
+}
+
 void WsClientStub::setOnDisconnected(std::function<void()> cb) {
     on_disconnected_ = std::move(cb);
 }
@@ -544,6 +548,10 @@ void WsClientBridge::setOnGoodbye(std::function<void()> cb) {
     on_goodbye_ = std::move(cb);
 }
 
+void WsClientBridge::setOnToolProgress(std::function<void(const std::string&)> cb) {
+    on_tool_progress_ = std::move(cb);
+}
+
 void WsClientBridge::setOnDisconnected(std::function<void()> cb) {
     on_disconnected_ = std::move(cb);
 }
@@ -623,6 +631,14 @@ void WsClientBridge::handleEventLine(const std::string& line) {
     if (event == "goodbye") {
         if (on_goodbye_) {
             on_goodbye_();
+        }
+        return;
+    }
+
+    if (event == "tool_progress") {
+        const std::string text = extractField(line, "text");
+        if (on_tool_progress_) {
+            on_tool_progress_(text);
         }
         return;
     }

@@ -22,7 +22,7 @@ jobs:
             build-essential pkg-config fakeroot \
             libsdl2-dev libsdl2-ttf-dev dpkg-dev libopus0 \
             fonts-noto-cjk fonts-noto-color-emoji \
-            python3-pil python3-websockets
+            python3-pil python3-cairosvg python3-websockets
 
       - name: Build .deb
         run: |

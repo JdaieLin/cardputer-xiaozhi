@@ -19,6 +19,8 @@ except Exception as e:
     print(json.dumps({"event": "error", "text": f"missing dependency: {e}"}), flush=True)
     raise
 
+from mcp_tools import McpTools
+
 SSL_CTX = ssl._create_unverified_context()
 
 EMOTION_TO_EMOJI = {
@@ -59,6 +61,22 @@ async def run_bridge(args: argparse.Namespace) -> None:
 
     session_id = ""
     ws_ssl = SSL_CTX if args.url.startswith("wss://") else None
+    progress_version = 0
+
+    def emit_tool_progress(text: str | None) -> None:
+        nonlocal progress_version
+        progress_version += 1
+        version = progress_version
+        print(json.dumps({"event": "tool_progress", "text": text or ""}, ensure_ascii=False), flush=True)
+        if text:
+            async def clear_later() -> None:
+                await asyncio.sleep(5.0)
+                if progress_version == version:
+                    emit_tool_progress(None)
+
+            asyncio.create_task(clear_later())
+
+    mcp_tools = McpTools(progress=emit_tool_progress)
 
     async with websockets.connect(
         args.url,
@@ -75,7 +93,7 @@ async def run_bridge(args: argparse.Namespace) -> None:
             "type": "hello",
             "version": 1,
             "transport": "websocket",
-            "features": {"mcp": False},
+            "features": {"mcp": True},
             "audio_params": {
                 "format": "opus",
                 "sample_rate": 16000,
@@ -93,6 +111,17 @@ async def run_bridge(args: argparse.Namespace) -> None:
         hello_resp: dict[str, Any] = json.loads(first)
         session_id = hello_resp.get("session_id", "")
         print(json.dumps({"event": "connected"}), flush=True)
+
+        mcp_tasks: set[asyncio.Task] = set()
+
+        async def handle_mcp(data: dict[str, Any]) -> None:
+            response = await mcp_tools.handle(data.get("payload") or {})
+            if response is not None:
+                await ws.send(json.dumps({
+                    "session_id": session_id,
+                    "type": "mcp",
+                    "payload": response,
+                }, ensure_ascii=False))
 
         async def recv_loop() -> None:
             async for msg in ws:
@@ -121,6 +150,10 @@ async def run_bridge(args: argparse.Namespace) -> None:
                         print(json.dumps({"event": "tts_text", "text": data.get("text", "")}), flush=True)
                     elif state == "stop":
                         print(json.dumps({"event": "tts_stop"}), flush=True)
+                elif t == "mcp":
+                    task = asyncio.create_task(handle_mcp(data))
+                    mcp_tasks.add(task)
+                    task.add_done_callback(mcp_tasks.discard)
                 elif t == "goodbye":
                     print(json.dumps({"event": "goodbye"}), flush=True)
                     return
@@ -170,6 +203,8 @@ async def run_bridge(args: argparse.Namespace) -> None:
 
         done, pending = await asyncio.wait({recv_task, send_task}, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
+            task.cancel()
+        for task in mcp_tasks:
             task.cancel()
 
     stdin_task.cancel()

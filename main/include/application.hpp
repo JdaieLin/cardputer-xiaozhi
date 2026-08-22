@@ -52,6 +52,7 @@ private:
     std::string status_text_;
     std::string display_text_;
     std::string current_emoji_;
+    std::string terminal_text_;
     std::string tts_text_buffer_;
     bool keep_listening_ = false;
     bool listen_after_connect_ = false;

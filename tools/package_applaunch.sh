@@ -87,6 +87,7 @@ mkdir -p \
 install -m 0755 "$BIN" "$PKG_ROOT/usr/share/APPLaunch/bin/$BIN_NAME"
 install -m 0644 "$ROOT_DIR/main/tools/ws_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/ws_bridge.py"
 install -m 0644 "$ROOT_DIR/main/tools/display_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/display_bridge.py"
+install -m 0644 "$ROOT_DIR/main/tools/mcp_tools.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/mcp_tools.py"
 install -m 0755 "$ROOT_DIR/tools/install.sh" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/install.sh"
 cp -R "$ROOT_DIR/main/tools/vendor/opuslib" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/vendor/"
 cp -R "$ROOT_DIR/main/tools/vendor/websockets" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/vendor/"
@@ -143,6 +144,7 @@ export XDG_RUNTIME_DIR=/run/user/1000
 export SDL_AUDIODRIVER=pulseaudio
 export PULSE_SERVER="unix:/run/user/1000/pulse/native"
 export XIAOZHI_CAPTURE_BACKEND=alsa
+export XIAOZHI_WEB_TOOL_PROXY="${XIAOZHI_WEB_TOOL_PROXY:-http://192.168.100.124:7890}"
 unset AUDIODEV
 unset XIAOZHI_AUDIO_CAPTURE_DEVICE
 unset XIAOZHI_AUDIO_PLAYBACK_DEVICE
@@ -211,6 +213,14 @@ if [ -z "$XIAOZHI_USER_HOME" ]; then
 fi
 XIAOZHI_IDENTITY_DIR="$XIAOZHI_USER_HOME/.config/xiaozhi"
 mkdir -p "$XIAOZHI_IDENTITY_DIR"
+XIAOZHI_TOOLS_ENV="${XIAOZHI_TOOLS_ENV:-$XIAOZHI_IDENTITY_DIR/tools.env}"
+if [ -f "$XIAOZHI_TOOLS_ENV" ]; then
+	# Device-local tool settings may contain secrets. They are deliberately not
+	# packaged; mcp_tools.py removes the sudo password from its environment.
+	set -a
+	. "$XIAOZHI_TOOLS_ENV"
+	set +a
+fi
 if [ ! -f "$XIAOZHI_IDENTITY_DIR/sim_identity.env" ]; then
 	if [ -f /tmp/cardputer-xiaozhi-device/sim_identity.env ]; then
 		cp /tmp/cardputer-xiaozhi-device/sim_identity.env "$XIAOZHI_IDENTITY_DIR/sim_identity.env"
@@ -274,7 +284,7 @@ Maintainer: $MAINTAINER_NAME <$MAINTAINER_EMAIL>
 Section: APPLaunch
 Priority: optional
 Homepage: $HOMEPAGE_URL
-Depends: libsdl2-2.0-0, libsdl2-ttf-2.0-0, libopus0, python3, python3-pil, pipewire, pipewire-pulse, wireplumber
+Depends: libsdl2-2.0-0, libsdl2-ttf-2.0-0, libopus0, python3, python3-pil, python3-cairosvg, curl, unzip, pipewire, pipewire-pulse, wireplumber
 Description: $DESCRIPTION for M5Cardputer Zero
 EOF
 
@@ -284,7 +294,9 @@ set -euo pipefail
 
 INSTALLER="/usr/share/APPLaunch/share/xiaozhi/install.sh"
 if [ -x "$INSTALLER" ]; then
-	XIAOZHI_INSTALL_SKIP_APT=1 "$INSTALLER"
+	XIAOZHI_INSTALL_SKIP_APT=1 \
+	XIAOZHI_WEB_TOOL_PROXY="${XIAOZHI_WEB_TOOL_PROXY:-http://192.168.100.124:7890}" \
+	"$INSTALLER"
 fi
 EOF
 chmod 0755 "$PKG_ROOT/DEBIAN/postinst"
