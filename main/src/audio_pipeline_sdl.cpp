@@ -367,6 +367,13 @@ void AudioPipelineSdl::playPcmFrame(const std::vector<int16_t>& pcm) {
     }
 }
 
+void AudioPipelineSdl::stopPlayback() {
+    if (playback_device_ != 0) {
+        SDL_ClearQueuedAudio(playback_device_);
+    }
+    closeTtsDebugCapture();
+}
+
 bool AudioPipelineSdl::hasPlaybackDevice() const {
     return playback_device_ != 0;
 }

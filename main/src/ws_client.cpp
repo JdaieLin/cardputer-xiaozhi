@@ -292,6 +292,10 @@ void WsClientStub::setOnToolProgress(std::function<void(const std::string&)> cb)
     on_tool_progress_ = std::move(cb);
 }
 
+void WsClientStub::setOnCommandActivity(std::function<void(bool)> cb) {
+    on_command_activity_ = std::move(cb);
+}
+
 void WsClientStub::setOnDisconnected(std::function<void()> cb) {
     on_disconnected_ = std::move(cb);
 }
@@ -552,6 +556,10 @@ void WsClientBridge::setOnToolProgress(std::function<void(const std::string&)> c
     on_tool_progress_ = std::move(cb);
 }
 
+void WsClientBridge::setOnCommandActivity(std::function<void(bool)> cb) {
+    on_command_activity_ = std::move(cb);
+}
+
 void WsClientBridge::setOnDisconnected(std::function<void()> cb) {
     on_disconnected_ = std::move(cb);
 }
@@ -639,6 +647,14 @@ void WsClientBridge::handleEventLine(const std::string& line) {
         const std::string text = extractField(line, "text");
         if (on_tool_progress_) {
             on_tool_progress_(text);
+        }
+        return;
+    }
+
+    if (event == "command_activity") {
+        const bool active = extractField(line, "active") == "true";
+        if (on_command_activity_) {
+            on_command_activity_(active);
         }
         return;
     }

@@ -29,6 +29,7 @@ public:
     virtual void setOnTtsStop(std::function<void()> cb) = 0;
     virtual void setOnGoodbye(std::function<void()> cb) { (void)cb; }
     virtual void setOnToolProgress(std::function<void(const std::string&)> cb) { (void)cb; }
+    virtual void setOnCommandActivity(std::function<void(bool)> cb) { (void)cb; }
     virtual void setOnDisconnected(std::function<void()> cb) { (void)cb; }
 };
 
@@ -50,6 +51,7 @@ public:
     void setOnTtsStop(std::function<void()> cb) override;
     void setOnGoodbye(std::function<void()> cb) override;
     void setOnToolProgress(std::function<void(const std::string&)> cb) override;
+    void setOnCommandActivity(std::function<void(bool)> cb) override;
     void setOnDisconnected(std::function<void()> cb) override;
 
 private:
@@ -62,6 +64,7 @@ private:
     std::function<void()> on_tts_stop_;
     std::function<void()> on_goodbye_;
     std::function<void(const std::string&)> on_tool_progress_;
+    std::function<void(bool)> on_command_activity_;
     std::function<void()> on_disconnected_;
     int poll_count_ = 0;
 };
@@ -90,6 +93,7 @@ public:
     void setOnTtsStop(std::function<void()> cb) override;
     void setOnGoodbye(std::function<void()> cb) override;
     void setOnToolProgress(std::function<void(const std::string&)> cb) override;
+    void setOnCommandActivity(std::function<void(bool)> cb) override;
     void setOnDisconnected(std::function<void()> cb) override;
 
 private:
@@ -113,6 +117,7 @@ private:
     std::function<void()> on_tts_stop_;
     std::function<void()> on_goodbye_;
     std::function<void(const std::string&)> on_tool_progress_;
+    std::function<void(bool)> on_command_activity_;
     std::function<void()> on_disconnected_;
 };
 

@@ -16,6 +16,7 @@ public:
     void setTerminalText(const std::string& text) override;
     void setAudioSamples(const std::vector<int16_t>& pcm, bool assistant) override;
     void toggleDisplayMode() override;
+    void setCommandActive(bool active) override;
     void renderState(AppState state, const std::string& text, const std::string& emoji) override;
 
     void disconnect();

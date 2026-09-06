@@ -14,6 +14,7 @@ public:
     virtual bool isCapturing() const = 0;
     virtual std::vector<int16_t> readPcmFrame() = 0;
     virtual void playPcmFrame(const std::vector<int16_t>& pcm) = 0;
+    virtual void stopPlayback() {}
     virtual bool hasPlaybackDevice() const { return false; }
 };
 
@@ -25,6 +26,7 @@ public:
     bool isCapturing() const override;
     std::vector<int16_t> readPcmFrame() override;
     void playPcmFrame(const std::vector<int16_t>& pcm) override;
+    void stopPlayback() override;
 
 private:
     bool capturing_ = false;

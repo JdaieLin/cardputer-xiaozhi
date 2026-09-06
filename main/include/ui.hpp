@@ -18,6 +18,7 @@ public:
         (void)assistant;
     }
     virtual void toggleDisplayMode() {}
+    virtual void setCommandActive(bool active) { (void)active; }
     virtual void renderState(AppState state, const std::string& text, const std::string& emoji) = 0;
 };
 

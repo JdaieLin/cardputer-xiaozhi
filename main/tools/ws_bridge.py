@@ -62,6 +62,7 @@ async def run_bridge(args: argparse.Namespace) -> None:
     session_id = ""
     ws_ssl = SSL_CTX if args.url.startswith("wss://") else None
     progress_version = 0
+    active_local_commands = 0
 
     def emit_tool_progress(text: str | None) -> None:
         nonlocal progress_version
@@ -76,7 +77,22 @@ async def run_bridge(args: argparse.Namespace) -> None:
 
             asyncio.create_task(clear_later())
 
-    mcp_tools = McpTools(progress=emit_tool_progress)
+    def emit_command_activity(active: bool) -> None:
+        nonlocal active_local_commands
+        previous = active_local_commands
+        active_local_commands = max(0, active_local_commands + (1 if active else -1))
+        if (previous == 0) != (active_local_commands == 0):
+            print(json.dumps({
+                "event": "command_activity",
+                "active": "true" if active_local_commands else "false",
+            }), flush=True)
+
+    mcp_tools = McpTools(
+        progress=emit_tool_progress,
+        command_activity=emit_command_activity,
+        device_id=args.device_id,
+        client_id=args.client_id,
+    )
 
     async with websockets.connect(
         args.url,

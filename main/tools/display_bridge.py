@@ -20,6 +20,7 @@ import array
 import base64
 import importlib.util
 import math
+import re
 from io import BytesIO
 
 try:
@@ -69,6 +70,20 @@ WATERCOLOR_TEMPORAL_3D = os.environ.get("XIAOZHI_WATERCOLOR_TEMPORAL_3D", "true"
 WATERCOLOR_THREADS = max(1, min(4, int(os.environ.get("XIAOZHI_WATERCOLOR_THREADS", "2"))))
 WATERCOLOR_PANE_WIDTH = min(WIDTH, WATERCOLOR_DIAMETER + 8)
 WATERCOLOR_PANE_HEIGHT = max(WATERCOLOR_DIAMETER + 20, HEIGHT - 12)
+WATERCOLOR_MIN_MEM_AVAILABLE_KB = max(
+    0, int(float(os.environ.get("XIAOZHI_WATERCOLOR_MIN_MEM_AVAILABLE_MB", "64")) * 1024)
+)
+WATERCOLOR_CRITICAL_MEM_AVAILABLE_KB = max(
+    0, int(float(os.environ.get("XIAOZHI_WATERCOLOR_CRITICAL_MEM_AVAILABLE_MB", "32")) * 1024)
+)
+WATERCOLOR_MIN_CMA_FREE_KB = max(
+    0, int(float(os.environ.get("XIAOZHI_WATERCOLOR_MIN_CMA_FREE_MB", "0")) * 1024)
+)
+WATERCOLOR_RECOVERY_DELAY_SEC = max(
+    0.0, float(os.environ.get("XIAOZHI_WATERCOLOR_RECOVERY_DELAY_SEC", "5"))
+)
+WATERCOLOR_RESOURCE_CHECK_SEC = 0.5
+WATERCOLOR_SUSPENDED_TEXT = "Low memory, watercolor paused"
 
 # ---- font setup ----
 _FONT_SEARCH = [
@@ -185,6 +200,7 @@ def _load_watercolor_renderer(force=False):
     )
 
 
+_watercolor_selected = UI_STYLE == "watercolor"
 try:
     _watercolor = _load_watercolor_renderer()
 except Exception as exc:
@@ -194,6 +210,10 @@ except Exception as exc:
 _watercolor_phase = 0.0
 _watercolor_clock = time.monotonic()
 _watercolor_last_frame = 0.0
+_watercolor_suspended = False
+_command_active = False
+_resource_last_check = 0.0
+_resource_recovery_since = None
 _audio_features = {
     "user": {
         "level": 0.0,
@@ -210,6 +230,99 @@ _audio_features = {
         "updated_at": 0.0,
     },
 }
+
+
+def _read_memory_info_kb(path="/proc/meminfo"):
+    values = {}
+    try:
+        with open(path, "r", encoding="ascii") as handle:
+            for line in handle:
+                key, separator, rest = line.partition(":")
+                if separator and key in {"MemAvailable", "CmaFree"}:
+                    try:
+                        values[key] = int(rest.strip().split()[0])
+                    except (ValueError, IndexError):
+                        pass
+    except OSError:
+        pass
+    return values
+
+
+def _memory_pressure_low(values, recovery=False, critical=False):
+    """Return true below the stop threshold (or the higher recovery threshold)."""
+    if recovery:
+        mem_limit = WATERCOLOR_CRITICAL_MEM_AVAILABLE_KB + 8 * 1024
+    elif critical:
+        mem_limit = WATERCOLOR_CRITICAL_MEM_AVAILABLE_KB
+    else:
+        mem_limit = WATERCOLOR_MIN_MEM_AVAILABLE_KB
+    cma_limit = WATERCOLOR_MIN_CMA_FREE_KB + (4 * 1024 if recovery else 0)
+    mem_low = mem_limit > 0 and values.get("MemAvailable", mem_limit) < mem_limit
+    # CmaFree is Raspberry Pi specific; do not disable watercolor on systems
+    # whose kernels do not publish it.
+    cma_low = cma_limit > 0 and "CmaFree" in values and values["CmaFree"] < cma_limit
+    return mem_low or cma_low
+
+
+def _update_resource_pressure(now):
+    global _watercolor, _watercolor_clock, _watercolor_suspended
+    global _resource_last_check, _resource_recovery_since
+    global _last_frame_key, _last_static_frame_key
+    if not _watercolor_selected:
+        return
+    if now - _resource_last_check < WATERCOLOR_RESOURCE_CHECK_SEC:
+        return
+    _resource_last_check = now
+    memory = _read_memory_info_kb()
+
+    if _command_active:
+        _resource_recovery_since = None
+        if not _watercolor_suspended and _memory_pressure_low(memory):
+            _watercolor = None
+            _watercolor_suspended = True
+            _last_frame_key = None
+            _last_static_frame_key = None
+            print(json.dumps({
+                "event": "watercolor_suspended",
+                "mem_available_kb": memory.get("MemAvailable"),
+                "cma_free_kb": memory.get("CmaFree"),
+            }), flush=True)
+        return
+
+    if not _watercolor_suspended:
+        if not _memory_pressure_low(memory, critical=True):
+            return
+        _watercolor = None
+        _watercolor_suspended = True
+        _last_frame_key = None
+        _last_static_frame_key = None
+        print(json.dumps({
+            "event": "watercolor_suspended",
+            "reason": "critical_memory",
+            "mem_available_kb": memory.get("MemAvailable"),
+            "cma_free_kb": memory.get("CmaFree"),
+        }), flush=True)
+        return
+    if _memory_pressure_low(memory, recovery=True):
+        _resource_recovery_since = None
+        return
+    if _resource_recovery_since is None:
+        _resource_recovery_since = now
+        return
+    if now - _resource_recovery_since < WATERCOLOR_RECOVERY_DELAY_SEC:
+        return
+    try:
+        _watercolor = _load_watercolor_renderer(force=True)
+    except Exception as exc:
+        _resource_recovery_since = now
+        print(json.dumps({"event": "error", "text": str(exc)}), flush=True)
+        return
+    _watercolor_clock = now
+    _watercolor_suspended = False
+    _resource_recovery_since = None
+    _last_frame_key = None
+    _last_static_frame_key = None
+    print(json.dumps({"event": "watercolor_resumed"}), flush=True)
 
 
 def _update_audio_features(pcm_b64, sample_rate, role):
@@ -379,7 +492,8 @@ def fb_write(rgb565_data):
 
 
 def _wrap_text(text, font, max_width):
-    """Wrap text into lines that each fit within max_width using the given font."""
+    """Paginate normalized subtitle text into single-line chunks."""
+    text = _single_line_text(text)
     if not text:
         return [""]
     lines = []
@@ -397,6 +511,11 @@ def _wrap_text(text, font, max_width):
     if current:
         lines.append(current)
     return lines or [text]
+
+
+def _single_line_text(text):
+    """Collapse server newlines and whitespace so subtitles never render on two rows."""
+    return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
 def _state_title(status):
@@ -429,6 +548,40 @@ def _draw_emoji(img, draw, emoji, target, x, y):
     draw.text((x, y), emoji, font=_emoji_font, fill=(255, 255, 255, 255))
     bbox = _emoji_font.getbbox(emoji)
     return max(1, bbox[2] - bbox[0]), max(1, bbox[3] - bbox[1])
+
+
+def _draw_key_hint(draw, x, y, key, label):
+    """Draw a compact keycap and action label with consistent spacing."""
+    key_width = max(24, int(math.ceil(_small_font.getlength(key))) + 12)
+    key_height = 20
+    draw.rounded_rectangle(
+        (x, y, x + key_width, y + key_height),
+        radius=5,
+        fill=(48, 54, 72, 255),
+    )
+    key_bbox = _small_font.getbbox(key)
+    key_text_width = key_bbox[2] - key_bbox[0]
+    key_text_height = key_bbox[3] - key_bbox[1]
+    draw.text(
+        (
+            x + (key_width - key_text_width) / 2 - key_bbox[0],
+            y + (key_height - key_text_height) / 2 - key_bbox[1],
+        ),
+        key,
+        font=_small_font,
+        fill=(242, 245, 252, 255),
+    )
+    label_bbox = _small_font.getbbox(label)
+    label_text_height = label_bbox[3] - label_bbox[1]
+    draw.text(
+        (
+            x + key_width + 8,
+            y + (key_height - label_text_height) / 2 - label_bbox[1],
+        ),
+        label,
+        font=_small_font,
+        fill=(150, 158, 180, 255),
+    )
 
 
 def _watercolor_image(status, now):
@@ -487,7 +640,7 @@ def render_frame(status, emoji, text, code, terminal):
     global _last_frame_key, _last_static_frame_key
     global _line_wrap_lines, _line_wrap_line, _line_wrap_next_ts, _line_wrap_current_text
     now = time.monotonic()
-    static_key = (status, emoji, text, code, terminal)
+    static_key = (status, emoji, text, code, terminal, _watercolor_suspended)
     if (
         _watercolor is not None
         and static_key == _last_static_frame_key
@@ -559,13 +712,9 @@ def render_frame(status, emoji, text, code, terminal):
             content_width = orb_x if _watercolor is not None else WIDTH
             draw.text(((content_width - cw) // 2, 72), code, font=_code_font, fill=(235, 240, 255, 255))
     elif status == "IDLE":
-        draw.text((8, 39), "SPACE to talk", font=_small_font, fill=(155, 160, 180, 255))
-        draw.text(
-            (8, 58),
-            "O: switch display mode",
-            font=_small_font,
-            fill=(105, 112, 132, 255),
-        )
+        _draw_key_hint(draw, 8, 36, "SPACE", "Talk")
+        _draw_key_hint(draw, 8, 61, "O", "Display mode")
+        _draw_key_hint(draw, 8, 86, "X", "End conversation")
     elif status == "LISTENING":
         draw.text((8, 39), "Listening...", font=_small_font, fill=(155, 160, 180, 255))
     elif status == "THINKING":
@@ -575,25 +724,36 @@ def render_frame(status, emoji, text, code, terminal):
     elif status == "ERROR":
         draw.text((8, 39), "ERROR", font=_small_font, fill=(200, 40, 40, 255))
 
+    # Keep resource-pressure feedback on the left, below command output and
+    # above subtitles. It remains visible for the full automatic suspension.
+    if _watercolor_suspended:
+        draw.text(
+            (8, HEIGHT - 58),
+            WATERCOLOR_SUSPENDED_TEXT,
+            font=_small_font,
+            fill=(255, 190, 70, 255),
+        )
+
     # Bottom status bar - line-wrap display
     bar_y = HEIGHT - 38
     draw.rectangle([0, bar_y, WIDTH, HEIGHT], fill=(50, 55, 70, 255))
-    if text:
+    subtitle = _single_line_text(text)
+    if subtitle:
         x0 = 8
         y0 = bar_y + 8
         avail_w = WIDTH - 16
-        tb = _text_font.getbbox(text)
+        tb = _text_font.getbbox(subtitle)
         text_w = max(0, tb[2] - tb[0])
         if text_w <= avail_w:
-            draw.text((x0, y0), text, font=_text_font, fill=(220, 225, 240, 255))
+            draw.text((x0, y0), subtitle, font=_text_font, fill=(220, 225, 240, 255))
             _line_wrap_lines = []
             _line_wrap_current_text = ""
             _line_wrap_line = 0
             line_bucket = 0
         else:
-            if text != _line_wrap_current_text:
-                _line_wrap_lines = _wrap_text(text, _text_font, avail_w)
-                _line_wrap_current_text = text
+            if subtitle != _line_wrap_current_text:
+                _line_wrap_lines = _wrap_text(subtitle, _text_font, avail_w)
+                _line_wrap_current_text = subtitle
                 # A new TTS sentence must become visible immediately instead
                 # of inheriting the scroll position of the previous sentence.
                 _line_wrap_line = 0
@@ -612,7 +772,7 @@ def render_frame(status, emoji, text, code, terminal):
         _line_wrap_line = 0
         line_bucket = 0
 
-    frame_key = (status, emoji, text, code, terminal, line_bucket)
+    frame_key = (status, emoji, text, code, terminal, line_bucket, _watercolor_suspended)
     if _watercolor is None and frame_key == _last_frame_key:
         img.close()
         return
@@ -629,7 +789,9 @@ def render_frame(status, emoji, text, code, terminal):
 
 
 def main():
-    global _fb_fd, _watercolor, _last_frame_key, _last_static_frame_key
+    global _fb_fd, _watercolor, _watercolor_selected, _watercolor_suspended
+    global _command_active, _resource_last_check, _resource_recovery_since
+    global _last_frame_key, _last_static_frame_key
     fb_open()
     print(json.dumps({"event": "connected"}), flush=True)
 
@@ -662,19 +824,37 @@ def main():
                 break
 
             if cmd.get("cmd") == "toggle_style":
-                if _watercolor is not None:
+                if _watercolor_selected:
+                    _watercolor_selected = False
                     _watercolor = None
+                    _watercolor_suspended = False
+                    _resource_recovery_since = None
                     style = "classic"
                 else:
-                    try:
-                        _watercolor = _load_watercolor_renderer(force=True)
-                        style = "watercolor"
-                    except Exception as exc:
-                        print(json.dumps({"event": "error", "text": str(exc)}), flush=True)
-                        continue
+                    _watercolor_selected = True
+                    memory = _read_memory_info_kb()
+                    if _command_active and _memory_pressure_low(memory):
+                        _watercolor_suspended = True
+                        _watercolor = None
+                    else:
+                        try:
+                            _watercolor = _load_watercolor_renderer(force=True)
+                            _watercolor_suspended = False
+                        except Exception as exc:
+                            _watercolor_selected = False
+                            print(json.dumps({"event": "error", "text": str(exc)}), flush=True)
+                            continue
+                    style = "watercolor"
                 _last_frame_key = None
                 _last_static_frame_key = None
                 print(json.dumps({"event": "display_style", "style": style}), flush=True)
+                continue
+
+            if cmd.get("cmd") == "command_activity":
+                _command_active = bool(cmd.get("active", False))
+                _resource_last_check = 0.0
+                if _command_active:
+                    _resource_recovery_since = None
                 continue
 
             if cmd.get("cmd") == "audio":
@@ -698,6 +878,7 @@ def main():
                     # write to stdout (NOT stderr) to allow C++ drain thread to consume it
                     traceback.print_exc()
 
+        _update_resource_pressure(time.monotonic())
         if current["has_frame"]:
             try:
                 render_frame(

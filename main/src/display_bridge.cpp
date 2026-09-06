@@ -248,6 +248,11 @@ void DisplayBridge::toggleDisplayMode() {
     sendJsonLine("{\"cmd\":\"toggle_style\"}");
 }
 
+void DisplayBridge::setCommandActive(bool active) {
+    sendJsonLine(std::string("{\"cmd\":\"command_activity\",\"active\":") +
+                 (active ? "true}" : "false}"));
+}
+
 void DisplayBridge::setAudioSamples(const std::vector<int16_t>& pcm, bool assistant) {
     if (!connected_ || pcm.empty()) return;
     const auto* bytes = reinterpret_cast<const unsigned char*>(pcm.data());

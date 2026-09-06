@@ -82,7 +82,8 @@ mkdir -p \
 	"$PKG_ROOT/usr/share/APPLaunch/bin" \
 	"$PKG_ROOT/usr/share/APPLaunch/share/images" \
 	"$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi" \
-	"$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/vendor"
+	"$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/vendor" \
+	"$PKG_ROOT/usr/lib/tmpfiles.d"
 
 install -m 0755 "$BIN" "$PKG_ROOT/usr/share/APPLaunch/bin/$BIN_NAME"
 install -m 0644 "$ROOT_DIR/main/tools/ws_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/ws_bridge.py"
@@ -99,6 +100,13 @@ if [[ ! -f "$ICON_SRC" ]]; then
 	exit 1
 fi
 install -m 0644 "$ICON_SRC" "$PKG_ROOT/usr/share/APPLaunch/share/images/xiaozhi.png"
+
+# Linux 6.18 names the default CMA heap "default_cma_region", while the
+# Raspberry Pi camera allocator still opens the legacy "linux,cma" path.
+# systemd-tmpfiles recreates this compatibility link whenever /dev is rebuilt.
+cat > "$PKG_ROOT/usr/lib/tmpfiles.d/cardputerzero-xiaozhi-camera.conf" <<'EOF'
+L /dev/dma_heap/linux,cma - - - - /dev/dma_heap/default_cma_region
+EOF
 
 # Bundle required fonts into the .deb.
 FONT_DST="$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/fonts"
@@ -286,7 +294,7 @@ Maintainer: $MAINTAINER_NAME <$MAINTAINER_EMAIL>
 Section: APPLaunch
 Priority: optional
 Homepage: $HOMEPAGE_URL
-Depends: libsdl2-2.0-0, libsdl2-ttf-2.0-0, libopus0, python3, python3-pil, python3-cairosvg, python3-numpy, curl, unzip, pipewire, pipewire-pulse, wireplumber
+Depends: libsdl2-2.0-0, libsdl2-ttf-2.0-0, libopus0, python3, python3-pil, python3-cairosvg, python3-numpy, curl, unzip, pipewire, pipewire-pulse, wireplumber, rpicam-apps-core
 Description: $DESCRIPTION for M5Cardputer Zero
 EOF
 
@@ -300,6 +308,7 @@ if [ -x "$INSTALLER" ]; then
 	XIAOZHI_WEB_TOOL_PROXY="${XIAOZHI_WEB_TOOL_PROXY:-http://192.168.100.124:7890}" \
 	"$INSTALLER"
 fi
+systemd-tmpfiles --create /usr/lib/tmpfiles.d/cardputerzero-xiaozhi-camera.conf 2>/dev/null || true
 EOF
 chmod 0755 "$PKG_ROOT/DEBIAN/postinst"
 

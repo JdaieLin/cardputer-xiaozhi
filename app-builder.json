@@ -1,6 +1,6 @@
 {
   "package_name": "cardputerzero-xiaozhi",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "revision": "m5stack1",
   "app_name": "XiaoZhi",
   "bin_name": "xiaozhi_app",
@@ -37,7 +37,7 @@
       "repository": "https://github.com/JdaieLin/cardputer-xiaozhi"
     },
     "permissions": {
-      "camera": false,
+      "camera": true,
       "microphone": true,
       "imu": false,
       "network": true,
@@ -60,7 +60,8 @@
         "python3-websockets",
         "python3-pil",
         "python3-cairosvg",
-        "python3-numpy"
+        "python3-numpy",
+        "rpicam-apps-core"
       ],
       "external_hardware": {
         "required": false,

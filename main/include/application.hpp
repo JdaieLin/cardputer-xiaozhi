@@ -36,6 +36,7 @@ private:
     void handleBackendDisconnected();
     void onButtonPressed();
     void onButtonReleased();
+    void endConversation();
     void tickBindingFlow();
     bool connectBackend();
 
@@ -56,6 +57,7 @@ private:
     std::string tts_text_buffer_;
     bool keep_listening_ = false;
     bool listen_after_connect_ = false;
+    bool conversation_cancelled_ = false;
     std::chrono::steady_clock::time_point last_ui_refresh_{};
 
     std::unique_ptr<Hal> hal_;

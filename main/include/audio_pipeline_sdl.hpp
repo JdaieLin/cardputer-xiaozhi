@@ -22,6 +22,7 @@ public:
     bool isCapturing() const override;
     std::vector<int16_t> readPcmFrame() override;
     void playPcmFrame(const std::vector<int16_t>& pcm) override;
+    void stopPlayback() override;
     bool hasPlaybackDevice() const override;
 
 private:

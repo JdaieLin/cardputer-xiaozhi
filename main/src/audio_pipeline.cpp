@@ -36,4 +36,6 @@ void AudioPipelineStub::playPcmFrame(const std::vector<int16_t>& pcm) {
     (void)pcm;
 }
 
+void AudioPipelineStub::stopPlayback() {}
+
 }  // namespace xiaozhi

@@ -112,6 +112,14 @@ void HalSdl::poll() {
             continue;
         }
 
+        if (event.type == SDL_KEYDOWN && event.key.repeat == 0 && event.key.keysym.sym == SDLK_x) {
+            std::cout << "[hal-sdl] X press -> end conversation" << std::endl;
+            if (conversation_exit_cb_) {
+                conversation_exit_cb_();
+            }
+            continue;
+        }
+
         if (event.type == SDL_KEYUP && event.key.repeat == 0 && event.key.keysym.sym == active_wake_key_) {
             active_wake_key_ = SDLK_UNKNOWN;
             if (release_cb_) {
@@ -154,6 +162,10 @@ void HalSdl::onButtonReleased(std::function<void()> cb) {
 
 void HalSdl::onDisplayModeToggle(std::function<void()> cb) {
     display_mode_toggle_cb_ = std::move(cb);
+}
+
+void HalSdl::onConversationExit(std::function<void()> cb) {
+    conversation_exit_cb_ = std::move(cb);
 }
 
 }  // namespace xiaozhi

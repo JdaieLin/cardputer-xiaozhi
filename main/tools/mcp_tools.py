@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -19,6 +20,7 @@ from xml.etree import ElementTree
 
 
 ProgressCallback = Callable[[str | None], None]
+ActivityCallback = Callable[[bool], None]
 ToolHandler = Callable[[dict[str, Any], ProgressCallback | None], Awaitable[dict[str, Any]]]
 
 
@@ -66,6 +68,19 @@ WEB_SEARCH_ENABLED = _env_bool("XIAOZHI_WEB_TOOLS_ENABLED", True)
 WEB_TIMEOUT = max(1.0, _env_float("XIAOZHI_WEB_TOOL_TIMEOUT_SEC", 15.0))
 WEB_RESULT_LIMIT = max(1, _env_int("XIAOZHI_WEB_SEARCH_RESULT_LIMIT", 5))
 
+CAMERA_ENABLED = _env_bool("XIAOZHI_CAMERA_TOOL_ENABLED", True)
+CAMERA_DEVICE = os.getenv("XIAOZHI_CAMERA_DEVICE", "/dev/video0").strip()
+CAMERA_COMMAND = os.getenv("XIAOZHI_CAMERA_COMMAND", "rpicam-still").strip()
+CAMERA_WIDTH = max(160, min(1920, _env_int("XIAOZHI_CAMERA_WIDTH", 640)))
+CAMERA_HEIGHT = max(120, min(1080, _env_int("XIAOZHI_CAMERA_HEIGHT", 480)))
+CAMERA_QUALITY = max(30, min(95, _env_int("XIAOZHI_CAMERA_JPEG_QUALITY", 80)))
+CAMERA_WARMUP_MS = max(100, min(5000, _env_int("XIAOZHI_CAMERA_WARMUP_MS", 600)))
+CAMERA_SENSOR_MODE = os.getenv("XIAOZHI_CAMERA_SENSOR_MODE", "640:480:10:P").strip()
+CAMERA_TIMEOUT = max(2.0, _env_float("XIAOZHI_CAMERA_TIMEOUT_SEC", 12.0))
+CAMERA_VISION_TIMEOUT = max(3.0, _env_float("XIAOZHI_CAMERA_VISION_TIMEOUT_SEC", 30.0))
+CAMERA_MAX_JPEG_BYTES = max(64 * 1024, _env_int("XIAOZHI_CAMERA_MAX_JPEG_BYTES", 4 * 1024 * 1024))
+CAMERA_MAX_RESPONSE_BYTES = max(16 * 1024, _env_int("XIAOZHI_CAMERA_MAX_RESPONSE_BYTES", 512 * 1024))
+
 
 LOCAL_COMMAND_SCHEMA = {
     "type": "object",
@@ -88,6 +103,16 @@ WEB_SEARCH_SCHEMA = {
         "search_type": {"type": "string", "description": "web or news."},
     },
     "required": ["query"],
+}
+CAMERA_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "question": {
+            "type": "string",
+            "description": "The question to answer about the newly captured photo.",
+        },
+    },
+    "required": ["question"],
 }
 
 
@@ -463,8 +488,20 @@ async def web_search(params: dict[str, Any], progress: ProgressCallback | None =
 
 
 class McpTools:
-    def __init__(self, progress: ProgressCallback | None = None) -> None:
+    def __init__(
+        self,
+        progress: ProgressCallback | None = None,
+        command_activity: ActivityCallback | None = None,
+        device_id: str = "",
+        client_id: str = "",
+        camera_available: bool | None = None,
+    ) -> None:
         self.progress = progress
+        self.command_activity = command_activity
+        self.device_id = device_id
+        self.client_id = client_id
+        self.vision_url = ""
+        self.vision_token = ""
         self.tools: dict[str, tuple[str, dict[str, Any], ToolHandler]] = {}
         if LOCAL_COMMAND_ENABLED:
             self.register(
@@ -482,6 +519,124 @@ class McpTools:
                 WEB_SEARCH_SCHEMA,
                 web_search,
             )
+        if camera_available is None:
+            camera_available = bool(
+                CAMERA_ENABLED
+                and CAMERA_DEVICE
+                and os.path.exists(CAMERA_DEVICE)
+                and CAMERA_COMMAND
+                and shutil.which(CAMERA_COMMAND)
+            )
+        if camera_available:
+            self.register(
+                "self.camera.take_photo",
+                "Always remember you have a camera. If the user asks you to see something, "
+                "use this tool to take a photo and answer the given question about it.",
+                CAMERA_SCHEMA,
+                self._camera_take_photo,
+            )
+
+    def _configure_capabilities(self, params: dict[str, Any]) -> None:
+        capabilities = params.get("capabilities") or {}
+        vision = capabilities.get("vision") if isinstance(capabilities, dict) else None
+        if not isinstance(vision, dict):
+            return
+        url = str(vision.get("url", "")).strip()
+        if url and urlparse(url).scheme in {"http", "https"}:
+            self.vision_url = url
+            self.vision_token = str(vision.get("token", "")).strip()
+
+    async def _capture_camera_jpeg(self) -> bytes:
+        args = [
+            CAMERA_COMMAND,
+            "--nopreview",
+            "--timeout", str(CAMERA_WARMUP_MS),
+            "--no-raw",
+            "--viewfinder-width", str(CAMERA_WIDTH),
+            "--viewfinder-height", str(CAMERA_HEIGHT),
+            "--viewfinder-mode", CAMERA_SENSOR_MODE,
+            "--mode", CAMERA_SENSOR_MODE,
+            "--buffer-count", "1",
+            "--viewfinder-buffer-count", "1",
+            "--width", str(CAMERA_WIDTH),
+            "--height", str(CAMERA_HEIGHT),
+            "--quality", str(CAMERA_QUALITY),
+            "--thumb", "none",
+            "--denoise", "off",
+            "--output", "-",
+        ]
+        process = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=CAMERA_TIMEOUT)
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            raise RuntimeError("camera capture timed out")
+        if process.returncode != 0:
+            detail = stderr.decode("utf-8", "replace").strip().splitlines()
+            raise RuntimeError(detail[-1] if detail else f"camera capture failed ({process.returncode})")
+        if len(stdout) > CAMERA_MAX_JPEG_BYTES:
+            raise RuntimeError(f"camera JPEG is too large ({len(stdout)} bytes)")
+        if len(stdout) < 4 or not stdout.startswith(b"\xff\xd8") or not stdout.rstrip().endswith(b"\xff\xd9"):
+            raise RuntimeError("camera did not return a valid JPEG")
+        return stdout
+
+    def _explain_camera_jpeg(self, jpeg: bytes, question: str) -> Any:
+        boundary = f"----XIAOZHI_CAMERA_{uuid.uuid4().hex}"
+        body = bytearray()
+        body.extend(f"--{boundary}\r\n".encode())
+        body.extend(b'Content-Disposition: form-data; name="question"\r\n\r\n')
+        body.extend(question.encode("utf-8"))
+        body.extend(b"\r\n")
+        body.extend(f"--{boundary}\r\n".encode())
+        body.extend(b'Content-Disposition: form-data; name="file"; filename="camera.jpg"\r\n')
+        body.extend(b"Content-Type: image/jpeg\r\n\r\n")
+        body.extend(jpeg)
+        body.extend(f"\r\n--{boundary}--\r\n".encode())
+
+        headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+        if self.device_id:
+            headers["Device-Id"] = self.device_id
+        if self.client_id:
+            headers["Client-Id"] = self.client_id
+        if self.vision_token:
+            headers["Authorization"] = f"Bearer {self.vision_token}"
+        request = Request(self.vision_url, data=bytes(body), headers=headers, method="POST")
+        proxy = os.getenv("XIAOZHI_CAMERA_VISION_PROXY", "").strip()
+        opener = build_opener(ProxyHandler({"http": proxy, "https": proxy}) if proxy else ProxyHandler())
+        with opener.open(request, timeout=CAMERA_VISION_TIMEOUT) as response:
+            raw = response.read(CAMERA_MAX_RESPONSE_BYTES + 1)
+        if len(raw) > CAMERA_MAX_RESPONSE_BYTES:
+            raise RuntimeError("vision response is too large")
+        text = raw.decode("utf-8", "replace").strip()
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return {"result": text}
+
+    async def _camera_take_photo(
+        self,
+        params: dict[str, Any],
+        progress: ProgressCallback | None = None,
+    ) -> dict[str, Any]:
+        question = str(params.get("question", "")).strip()
+        if not question:
+            raise ValueError("question is required")
+        if not self.vision_url:
+            raise RuntimeError("vision capability is unavailable for this session")
+        if progress:
+            progress("camera\nCapturing photo...")
+        jpeg = await self._capture_camera_jpeg()
+        if progress:
+            progress(f"camera\nAnalyzing {len(jpeg) // 1024} KB photo...")
+        result = await asyncio.to_thread(self._explain_camera_jpeg, jpeg, question)
+        if progress:
+            progress("camera\nPhoto analysis completed")
+        return result
 
     @staticmethod
     def _local_command_description() -> str:
@@ -500,6 +655,16 @@ class McpTools:
     def register(self, name: str, description: str, schema: dict[str, Any], handler: ToolHandler) -> None:
         self.tools[name] = (description, schema, handler)
 
+    async def _end_activity_after_background_job(self, job: CommandJob) -> None:
+        try:
+            if job.monitor is not None:
+                await asyncio.shield(job.monitor)
+            else:
+                await job.process.wait()
+        finally:
+            if self.command_activity:
+                self.command_activity(False)
+
     async def handle(self, rpc: dict[str, Any]) -> dict[str, Any] | None:
         rpc_id = rpc.get("id")
         if rpc_id is None:
@@ -507,10 +672,11 @@ class McpTools:
         method = str(rpc.get("method", ""))
         params = rpc.get("params") or {}
         if method == "initialize":
+            self._configure_capabilities(params)
             result = {
                 "protocolVersion": params.get("protocolVersion", "2024-11-05"),
                 "capabilities": {"tools": {"listChanged": True}},
-                "serverInfo": {"name": "cardputer-xiaozhi", "version": "0.2.5"},
+                "serverInfo": {"name": "cardputer-xiaozhi", "version": "0.2.6"},
             }
         elif method == "tools/list":
             result = {
@@ -525,11 +691,31 @@ class McpTools:
             tool = self.tools.get(name)
             if tool is None:
                 return {"jsonrpc": "2.0", "id": rpc_id, "result": {"error": f"Unknown tool: {name}"}}
+            is_local_command = name == "local_command"
+            background_activity = False
+            if is_local_command and self.command_activity:
+                self.command_activity(True)
+                # Give the UI bridge enough time to stop the native watercolor
+                # renderer before a memory-heavy child process is spawned.
+                await asyncio.sleep(0.2)
             try:
                 value = await tool[2](arguments, self.progress)
+                if (
+                    is_local_command
+                    and self.command_activity
+                    and isinstance(value, dict)
+                    and value.get("status") == "running"
+                ):
+                    job = _JOBS.get(str(value.get("job_id", "")))
+                    if job is not None:
+                        background_activity = True
+                        asyncio.create_task(self._end_activity_after_background_job(job))
                 result = {"content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False)}]}
             except Exception as exc:
                 if self.progress:
                     self.progress(f"error\n{_redact_secret(str(exc))}")
                 result = {"error": _redact_secret(str(exc))}
+            finally:
+                if is_local_command and self.command_activity and not background_activity:
+                    self.command_activity(False)
         return {"jsonrpc": "2.0", "id": rpc_id, "result": result}

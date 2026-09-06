@@ -22,6 +22,7 @@ public:
     void onButtonPressed(std::function<void()> cb) override;
     void onButtonReleased(std::function<void()> cb) override;
     void onDisplayModeToggle(std::function<void()> cb) override;
+    void onConversationExit(std::function<void()> cb) override;
 
 private:
     bool isWakeKey(const SDL_KeyboardEvent& event) const;
@@ -30,6 +31,7 @@ private:
     std::function<void()> press_cb_;
     std::function<void()> release_cb_;
     std::function<void()> display_mode_toggle_cb_;
+    std::function<void()> conversation_exit_cb_;
     bool should_quit_ = false;
     SDL_Keycode active_wake_key_ = SDLK_UNKNOWN;
     std::vector<SDL_Keycode> wake_keys_;

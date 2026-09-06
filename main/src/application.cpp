@@ -33,9 +33,13 @@ bool Application::start() {
     hal_->onButtonPressed([this]() { onButtonPressed(); });
     hal_->onButtonReleased([this]() { onButtonReleased(); });
     hal_->onDisplayModeToggle([this]() { ui_->toggleDisplayMode(); });
+    hal_->onConversationExit([this]() { endConversation(); });
     last_ui_refresh_ = std::chrono::steady_clock::now();
 
     ws_->setOnServerText([this](const std::string& msg) {
+        if (conversation_cancelled_) {
+            return;
+        }
         std::cout << "[stt] " << msg << std::endl;
         if (state_ == AppState::Listening && audio_->isCapturing()) {
             audio_->stopCapture();
@@ -46,14 +50,14 @@ bool Application::start() {
         updateDisplayMessage(msg);
     });
     ws_->setOnEmotion([this](const std::string& emoji) {
-        if (emoji.empty()) {
+        if (conversation_cancelled_ || emoji.empty()) {
             return;
         }
         current_emoji_ = emoji;
         renderUi();
     });
     ws_->setOnTtsText([this](const std::string& msg) {
-        if (msg.empty()) {
+        if (conversation_cancelled_ || msg.empty()) {
             return;
         }
         // sentence_start already carries the complete sentence. Replacing the
@@ -71,6 +75,9 @@ bool Application::start() {
         }
     });
     ws_->setOnTtsStart([this]() {
+        if (conversation_cancelled_) {
+            return;
+        }
         if (audio_->isCapturing()) {
             audio_->stopCapture();
         }
@@ -82,10 +89,16 @@ bool Application::start() {
         setState(AppState::Speaking, "tts start", true);
     });
     ws_->setOnTtsPcm([this](const std::vector<int16_t>& pcm) {
+        if (conversation_cancelled_) {
+            return;
+        }
         ui_->setAudioSamples(pcm, true);
         audio_->playPcmFrame(pcm);
     });
     ws_->setOnTtsStop([this]() {
+        if (conversation_cancelled_) {
+            return;
+        }
         if (keep_listening_ && connected_) {
             startListening(true);
             return;
@@ -97,9 +110,16 @@ bool Application::start() {
         setState(AppState::Idle, "server ended conversation", true);
     });
     ws_->setOnToolProgress([this](const std::string& text) {
+        if (conversation_cancelled_) {
+            return;
+        }
         terminal_text_ = text;
         ui_->setTerminalText(terminal_text_);
         renderUi();
+    });
+    ws_->setOnCommandActivity([this](bool active) {
+        std::cout << "[tool] local command active=" << active << std::endl;
+        ui_->setCommandActive(active);
     });
     ws_->setOnDisconnected([this]() { handleBackendDisconnected(); });
 
@@ -111,6 +131,7 @@ bool Application::start() {
     connect_retry_count_ = 0;
     keep_listening_ = false;
     listen_after_connect_ = false;
+    conversation_cancelled_ = false;
     tts_text_buffer_.clear();
     status_text_.clear();
     display_text_.clear();
@@ -255,6 +276,7 @@ void Application::startListening(bool preserve_display) {
               << " capturing=" << audio_->isCapturing()
               << " preserve_display=" << preserve_display << std::endl;
     if (connected_ && !audio_->isCapturing()) {
+        conversation_cancelled_ = false;
         tts_text_buffer_.clear();
         ws_->sendListenStart();
         audio_->startCapture();
@@ -269,6 +291,7 @@ void Application::handleBackendDisconnected() {
     connected_ = false;
     keep_listening_ = false;
     listen_after_connect_ = false;
+    conversation_cancelled_ = false;
     audio_->stopCapture();
     current_emoji_.clear();
     setState(AppState::Idle, "Ready", false);
@@ -308,6 +331,31 @@ void Application::onButtonPressed() {
 
 void Application::onButtonReleased() {
     // Wake key mode: release should not stop listening.
+}
+
+void Application::endConversation() {
+    if (!running_) {
+        return;
+    }
+    std::cout << "[conversation] end requested" << std::endl;
+    keep_listening_ = false;
+    listen_after_connect_ = false;
+    conversation_cancelled_ = true;
+    if (audio_->isCapturing()) {
+        audio_->stopCapture();
+        if (connected_) {
+            ws_->sendListenStop();
+        }
+    }
+    audio_->stopPlayback();
+    if (connected_) {
+        ws_->sendAbort();
+    }
+    terminal_text_.clear();
+    tts_text_buffer_.clear();
+    current_emoji_.clear();
+    ui_->setTerminalText(terminal_text_);
+    setState(AppState::Idle, "Ready", false);
 }
 
 void Application::tickBindingFlow() {
