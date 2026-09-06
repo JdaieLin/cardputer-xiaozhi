@@ -85,6 +85,7 @@ bool Application::start() {
         // spoken response. The bridge's delayed clear remains as a fallback.
         terminal_text_.clear();
         ui_->setTerminalText(terminal_text_);
+        ui_->setCameraFrame("");
         tts_text_buffer_.clear();
         setState(AppState::Speaking, "tts start", true);
     });
@@ -117,6 +118,13 @@ bool Application::start() {
         ui_->setTerminalText(terminal_text_);
         renderUi();
     });
+    ws_->setOnCameraFrame([this](const std::string& jpeg_base64) {
+        if (conversation_cancelled_) {
+            return;
+        }
+        ui_->setCameraFrame(jpeg_base64);
+        renderUi();
+    });
     ws_->setOnCommandActivity([this](bool active) {
         std::cout << "[tool] local command active=" << active << std::endl;
         ui_->setCommandActive(active);
@@ -138,6 +146,7 @@ bool Application::start() {
     current_emoji_.clear();
     terminal_text_.clear();
     ui_->setTerminalText(terminal_text_);
+    ui_->setCameraFrame("");
 
     if (!audio_->init()) {
         std::cerr << "[app] audio init failed, running without sound I/O" << std::endl;
@@ -355,6 +364,7 @@ void Application::endConversation() {
     tts_text_buffer_.clear();
     current_emoji_.clear();
     ui_->setTerminalText(terminal_text_);
+    ui_->setCameraFrame("");
     setState(AppState::Idle, "Ready", false);
 }
 

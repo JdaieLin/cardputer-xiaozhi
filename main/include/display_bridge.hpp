@@ -17,6 +17,7 @@ public:
     void setAudioSamples(const std::vector<int16_t>& pcm, bool assistant) override;
     void toggleDisplayMode() override;
     void setCommandActive(bool active) override;
+    void setCameraFrame(const std::string& jpeg_base64) override;
     void renderState(AppState state, const std::string& text, const std::string& emoji) override;
 
     void disconnect();

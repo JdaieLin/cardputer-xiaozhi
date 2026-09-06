@@ -236,8 +236,18 @@ void DisplayBridge::disconnect() {
 void DisplayBridge::sendJsonLine(const std::string& json_line) {
     if (child_stdin_fd_ < 0 || !connected_) return;
     const std::string line = json_line + "\n";
-    const ssize_t n = write(child_stdin_fd_, line.c_str(), line.size());
-    static_cast<void>(n);
+    size_t offset = 0;
+    while (offset < line.size()) {
+        const ssize_t n = write(child_stdin_fd_, line.data() + offset, line.size() - offset);
+        if (n > 0) {
+            offset += static_cast<size_t>(n);
+            continue;
+        }
+        if (n < 0 && errno == EINTR) {
+            continue;
+        }
+        break;
+    }
 }
 
 void DisplayBridge::setTerminalText(const std::string& text) {
@@ -251,6 +261,10 @@ void DisplayBridge::toggleDisplayMode() {
 void DisplayBridge::setCommandActive(bool active) {
     sendJsonLine(std::string("{\"cmd\":\"command_activity\",\"active\":") +
                  (active ? "true}" : "false}"));
+}
+
+void DisplayBridge::setCameraFrame(const std::string& jpeg_base64) {
+    sendJsonLine("{\"cmd\":\"camera_frame\",\"jpeg\":\"" + jpeg_base64 + "\"}");
 }
 
 void DisplayBridge::setAudioSamples(const std::vector<int16_t>& pcm, bool assistant) {

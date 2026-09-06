@@ -18,7 +18,6 @@
 #include <cctype>
 #include <filesystem>
 #include <iostream>
-#include <regex>
 #include <sstream>
 #include <vector>
 
@@ -292,6 +291,10 @@ void WsClientStub::setOnToolProgress(std::function<void(const std::string&)> cb)
     on_tool_progress_ = std::move(cb);
 }
 
+void WsClientStub::setOnCameraFrame(std::function<void(const std::string&)> cb) {
+    on_camera_frame_ = std::move(cb);
+}
+
 void WsClientStub::setOnCommandActivity(std::function<void(bool)> cb) {
     on_command_activity_ = std::move(cb);
 }
@@ -556,6 +559,10 @@ void WsClientBridge::setOnToolProgress(std::function<void(const std::string&)> c
     on_tool_progress_ = std::move(cb);
 }
 
+void WsClientBridge::setOnCameraFrame(std::function<void(const std::string&)> cb) {
+    on_camera_frame_ = std::move(cb);
+}
+
 void WsClientBridge::setOnCommandActivity(std::function<void(bool)> cb) {
     on_command_activity_ = std::move(cb);
 }
@@ -651,6 +658,14 @@ void WsClientBridge::handleEventLine(const std::string& line) {
         return;
     }
 
+    if (event == "camera_frame") {
+        const std::string jpeg = extractField(line, "jpeg");
+        if (on_camera_frame_) {
+            on_camera_frame_(jpeg);
+        }
+        return;
+    }
+
     if (event == "command_activity") {
         const bool active = extractField(line, "active") == "true";
         if (on_command_activity_) {
@@ -682,10 +697,41 @@ void WsClientBridge::handleEventLine(const std::string& line) {
 }
 
 std::string WsClientBridge::extractField(const std::string& line, const std::string& key) const {
-    const std::regex re("\\\"" + key + "\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"");
-    std::smatch m;
-    if (std::regex_search(line, m, re) && m.size() > 1) {
-        return jsonUnescape(m[1].str());
+    // std::regex in libstdc++ recursively evaluates long character classes.
+    // A camera JPEG encoded as Base64 can be tens or hundreds of kilobytes,
+    // which previously overflowed the app stack while matching the `jpeg`
+    // field. These bridge messages are flat JSON objects generated locally, so
+    // a linear quoted-string scanner is both sufficient and size-safe.
+    const std::string needle = "\"" + key + "\"";
+    size_t pos = line.find(needle);
+    if (pos == std::string::npos) {
+        return {};
+    }
+    pos += needle.size();
+    while (pos < line.size() && std::isspace(static_cast<unsigned char>(line[pos])) != 0) {
+        ++pos;
+    }
+    if (pos >= line.size() || line[pos] != ':') {
+        return {};
+    }
+    ++pos;
+    while (pos < line.size() && std::isspace(static_cast<unsigned char>(line[pos])) != 0) {
+        ++pos;
+    }
+    if (pos >= line.size() || line[pos] != '"') {
+        return {};
+    }
+
+    const size_t start = ++pos;
+    while (pos < line.size()) {
+        if (line[pos] == '\\') {
+            pos += (pos + 1 < line.size()) ? 2 : 1;
+            continue;
+        }
+        if (line[pos] == '"') {
+            return jsonUnescape(line.substr(start, pos - start));
+        }
+        ++pos;
     }
     return {};
 }

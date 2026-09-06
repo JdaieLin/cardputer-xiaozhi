@@ -1,9 +1,11 @@
 import asyncio
+import base64
 import importlib.util
 import json
 import sys
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -118,9 +120,86 @@ class WatercolorResourcePressureTests(unittest.TestCase):
             ))
 
 
+@unittest.skipIf(display_bridge is None, "Pillow is not installed in this Python runtime")
+class CameraPreviewRenderTests(unittest.TestCase):
+    def setUp(self):
+        names = (
+            "_camera_frame", "_camera_frame_version", "_watercolor",
+            "_last_frame_key", "_last_static_frame_key", "SNAPSHOT_PATH",
+        )
+        self.saved = {name: getattr(display_bridge, name) for name in names}
+
+    def tearDown(self):
+        current = display_bridge._camera_frame
+        if current is not None and current is not self.saved["_camera_frame"]:
+            current.close()
+        for name, value in self.saved.items():
+            setattr(display_bridge, name, value)
+
+    def test_camera_photo_fills_left_area_between_header_and_footer(self):
+        source = display_bridge.Image.new("RGB", (640, 480), (230, 25, 20))
+        encoded = BytesIO()
+        source.save(encoded, format="JPEG", quality=90)
+        source.close()
+
+        display_bridge._watercolor = None
+        display_bridge._set_camera_frame(base64.b64encode(encoded.getvalue()).decode("ascii"))
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = Path(directory) / "camera-preview.png"
+            display_bridge.SNAPSHOT_PATH = str(snapshot)
+            display_bridge.render_frame("THINKING", "🤔", "", "", "camera\nAnalyzing...")
+            image = display_bridge.Image.open(snapshot).convert("RGB")
+            red, green, blue = image.getpixel((20, 60))
+            self.assertGreater(red, 180)
+            self.assertLess(green, 70)
+            self.assertLess(blue, 70)
+            self.assertNotEqual(image.getpixel((20, 20)), image.getpixel((20, 60)))
+            self.assertNotEqual(image.getpixel((20, 150)), image.getpixel((20, 60)))
+            image.close()
+
+        display_bridge._set_camera_frame("")
+        self.assertIsNone(display_bridge._camera_frame)
+
+
+@unittest.skipIf(display_bridge is None, "Pillow is not installed in this Python runtime")
+class CameraCompressionTests(unittest.TestCase):
+    def test_camera_upload_is_resized_and_bounded(self):
+        source = display_bridge.Image.new("RGB", (1200, 900), (80, 140, 210))
+        original = BytesIO()
+        source.save(original, format="JPEG", quality=95)
+        source.close()
+
+        compressed = McpTools._prepare_camera_upload_jpeg(original.getvalue())
+        self.assertLessEqual(len(compressed), mcp_tools_module.CAMERA_UPLOAD_MAX_BYTES)
+        with display_bridge.Image.open(BytesIO(compressed)) as image:
+            self.assertLessEqual(image.width, mcp_tools_module.CAMERA_UPLOAD_MAX_WIDTH)
+            self.assertLessEqual(image.height, mcp_tools_module.CAMERA_UPLOAD_MAX_HEIGHT)
+
+    def test_camera_upload_is_rotated_for_device_mounting(self):
+        source = display_bridge.Image.new("RGB", (400, 300), (225, 30, 20))
+        draw = display_bridge.ImageDraw.Draw(source)
+        draw.rectangle((0, 150, 400, 300), fill=(20, 40, 225))
+        original = BytesIO()
+        source.save(original, format="JPEG", quality=95)
+        source.close()
+
+        compressed = McpTools._prepare_camera_upload_jpeg(original.getvalue())
+        with display_bridge.Image.open(BytesIO(compressed)).convert("RGB") as image:
+            top = image.getpixel((image.width // 2, 30))
+            bottom = image.getpixel((image.width // 2, image.height - 30))
+            self.assertGreater(top[2], top[0])
+            self.assertGreater(bottom[0], bottom[2])
+
+
 class CameraToolTests(unittest.IsolatedAsyncioTestCase):
     async def test_camera_is_listed_and_uses_vision_capability(self):
-        tools = McpTools(device_id="device", client_id="client", camera_available=True)
+        previews = []
+        tools = McpTools(
+            device_id="device",
+            client_id="client",
+            camera_available=True,
+            camera_preview=previews.append,
+        )
         init = await tools.handle({
             "jsonrpc": "2.0",
             "id": 1,
@@ -141,8 +220,11 @@ class CameraToolTests(unittest.IsolatedAsyncioTestCase):
         names = {item["name"] for item in listed["result"]["tools"]}
         self.assertIn("self.camera.take_photo", names)
 
-        tools._capture_camera_jpeg = AsyncMock(return_value=b"\xff\xd8photo\xff\xd9")
-        with patch.object(tools, "_explain_camera_jpeg", return_value={"answer": "a desk"}):
+        captured = b"\xff\xd8photo\xff\xd9"
+        compressed = b"\xff\xd8small\xff\xd9"
+        tools._capture_camera_jpeg = AsyncMock(return_value=captured)
+        with patch.object(tools, "_prepare_camera_upload_jpeg", return_value=compressed), \
+             patch.object(tools, "_explain_camera_jpeg", return_value={"answer": "a desk"}) as explain:
             called = await tools.handle({
                 "jsonrpc": "2.0",
                 "id": 3,
@@ -155,6 +237,8 @@ class CameraToolTests(unittest.IsolatedAsyncioTestCase):
         content = called["result"]["content"][0]
         self.assertEqual(content["type"], "text")
         self.assertEqual(json.loads(content["text"]), {"answer": "a desk"})
+        self.assertEqual(previews, [compressed])
+        explain.assert_called_once_with(compressed, "What is here?")
 
     async def test_camera_rejects_missing_vision_capability(self):
         tools = McpTools(camera_available=True)

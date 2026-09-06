@@ -13,6 +13,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
+from io import BytesIO
 from typing import Any, Awaitable, Callable
 from urllib.parse import parse_qs, quote_plus, unquote, urlparse
 from urllib.request import ProxyHandler, Request, build_opener
@@ -21,6 +22,7 @@ from xml.etree import ElementTree
 
 ProgressCallback = Callable[[str | None], None]
 ActivityCallback = Callable[[bool], None]
+CameraPreviewCallback = Callable[[bytes | None], None]
 ToolHandler = Callable[[dict[str, Any], ProgressCallback | None], Awaitable[dict[str, Any]]]
 
 
@@ -79,6 +81,15 @@ CAMERA_SENSOR_MODE = os.getenv("XIAOZHI_CAMERA_SENSOR_MODE", "640:480:10:P").str
 CAMERA_TIMEOUT = max(2.0, _env_float("XIAOZHI_CAMERA_TIMEOUT_SEC", 12.0))
 CAMERA_VISION_TIMEOUT = max(3.0, _env_float("XIAOZHI_CAMERA_VISION_TIMEOUT_SEC", 30.0))
 CAMERA_MAX_JPEG_BYTES = max(64 * 1024, _env_int("XIAOZHI_CAMERA_MAX_JPEG_BYTES", 4 * 1024 * 1024))
+CAMERA_UPLOAD_MAX_WIDTH = max(160, min(1280, _env_int("XIAOZHI_CAMERA_UPLOAD_MAX_WIDTH", 512)))
+CAMERA_UPLOAD_MAX_HEIGHT = max(120, min(960, _env_int("XIAOZHI_CAMERA_UPLOAD_MAX_HEIGHT", 384)))
+CAMERA_UPLOAD_QUALITY = max(40, min(90, _env_int("XIAOZHI_CAMERA_UPLOAD_JPEG_QUALITY", 72)))
+_camera_rotation = _env_int("XIAOZHI_CAMERA_ROTATION", 180)
+CAMERA_ROTATION = _camera_rotation if _camera_rotation in {0, 90, 180, 270} else 180
+CAMERA_UPLOAD_MAX_BYTES = max(
+    64 * 1024,
+    min(2 * 1024 * 1024, _env_int("XIAOZHI_CAMERA_UPLOAD_MAX_BYTES", 256 * 1024)),
+)
 CAMERA_MAX_RESPONSE_BYTES = max(16 * 1024, _env_int("XIAOZHI_CAMERA_MAX_RESPONSE_BYTES", 512 * 1024))
 
 
@@ -492,12 +503,14 @@ class McpTools:
         self,
         progress: ProgressCallback | None = None,
         command_activity: ActivityCallback | None = None,
+        camera_preview: CameraPreviewCallback | None = None,
         device_id: str = "",
         client_id: str = "",
         camera_available: bool | None = None,
     ) -> None:
         self.progress = progress
         self.command_activity = command_activity
+        self.camera_preview = camera_preview
         self.device_id = device_id
         self.client_id = client_id
         self.vision_url = ""
@@ -585,6 +598,53 @@ class McpTools:
             raise RuntimeError("camera did not return a valid JPEG")
         return stdout
 
+    @staticmethod
+    def _prepare_camera_upload_jpeg(jpeg: bytes) -> bytes:
+        """Resize and recompress a capture before previewing and uploading it."""
+        try:
+            from PIL import Image, ImageOps
+        except ImportError as exc:
+            raise RuntimeError("camera image compression requires Pillow") from exc
+
+        with Image.open(BytesIO(jpeg)) as source:
+            source.load()
+            image = ImageOps.exif_transpose(source).convert("RGB")
+
+        try:
+            transpose = {
+                90: Image.Transpose.ROTATE_90,
+                180: Image.Transpose.ROTATE_180,
+                270: Image.Transpose.ROTATE_270,
+            }.get(CAMERA_ROTATION)
+            if transpose is not None:
+                rotated = image.transpose(transpose)
+                image.close()
+                image = rotated
+            image.thumbnail(
+                (CAMERA_UPLOAD_MAX_WIDTH, CAMERA_UPLOAD_MAX_HEIGHT),
+                Image.Resampling.LANCZOS,
+            )
+            quality = CAMERA_UPLOAD_QUALITY
+            encoded = b""
+            while quality >= 40:
+                output = BytesIO()
+                image.save(
+                    output,
+                    format="JPEG",
+                    quality=quality,
+                    subsampling="4:2:0",
+                    optimize=False,
+                )
+                encoded = output.getvalue()
+                if len(encoded) <= CAMERA_UPLOAD_MAX_BYTES:
+                    return encoded
+                quality -= 8
+            raise RuntimeError(
+                f"compressed camera JPEG is too large ({len(encoded)} bytes)"
+            )
+        finally:
+            image.close()
+
     def _explain_camera_jpeg(self, jpeg: bytes, question: str) -> Any:
         boundary = f"----XIAOZHI_CAMERA_{uuid.uuid4().hex}"
         body = bytearray()
@@ -632,6 +692,11 @@ class McpTools:
             progress("camera\nCapturing photo...")
         jpeg = await self._capture_camera_jpeg()
         if progress:
+            progress(f"camera\nCompressing {len(jpeg) // 1024} KB photo...")
+        jpeg = await asyncio.to_thread(self._prepare_camera_upload_jpeg, jpeg)
+        if self.camera_preview:
+            self.camera_preview(jpeg)
+        if progress:
             progress(f"camera\nAnalyzing {len(jpeg) // 1024} KB photo...")
         result = await asyncio.to_thread(self._explain_camera_jpeg, jpeg, question)
         if progress:
@@ -676,7 +741,7 @@ class McpTools:
             result = {
                 "protocolVersion": params.get("protocolVersion", "2024-11-05"),
                 "capabilities": {"tools": {"listChanged": True}},
-                "serverInfo": {"name": "cardputer-xiaozhi", "version": "0.2.6"},
+                "serverInfo": {"name": "cardputer-xiaozhi", "version": "0.2.7"},
             }
         elif method == "tools/list":
             result = {

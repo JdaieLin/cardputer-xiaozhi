@@ -6,13 +6,20 @@ import json
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 from pathlib import Path
 
+from PIL import Image
 
 TOOLS_DIR = Path(__file__).resolve().parents[1] / "main" / "tools"
 sys.path.insert(0, str(TOOLS_DIR))
 
-from mcp_tools import McpTools  # noqa: E402
+from mcp_tools import (  # noqa: E402
+    CAMERA_UPLOAD_MAX_BYTES,
+    CAMERA_UPLOAD_MAX_HEIGHT,
+    CAMERA_UPLOAD_MAX_WIDTH,
+    McpTools,
+)
 
 
 class VisionHandler(BaseHTTPRequestHandler):
@@ -35,7 +42,12 @@ class VisionHandler(BaseHTTPRequestHandler):
 
 
 async def run_smoke(port: int) -> None:
-    tools = McpTools(device_id="smoke-device", client_id="smoke-client")
+    previews = []
+    tools = McpTools(
+        device_id="smoke-device",
+        client_id="smoke-client",
+        camera_preview=previews.append,
+    )
     assert "self.camera.take_photo" in tools.tools, "camera tool was not advertised"
     await tools.handle({
         "jsonrpc": "2.0",
@@ -65,6 +77,16 @@ async def run_smoke(port: int) -> None:
     assert VisionHandler.headers_seen.get("Authorization") == "Bearer smoke-token"
     assert VisionHandler.headers_seen.get("Device-Id") == "smoke-device"
     assert VisionHandler.headers_seen.get("Client-Id") == "smoke-client"
+    assert len(previews) == 1
+    assert previews[0].startswith(b"\xff\xd8") and previews[0].rstrip().endswith(b"\xff\xd9")
+    assert len(previews[0]) <= CAMERA_UPLOAD_MAX_BYTES
+    with Image.open(BytesIO(previews[0])) as image:
+        assert image.width <= CAMERA_UPLOAD_MAX_WIDTH
+        assert image.height <= CAMERA_UPLOAD_MAX_HEIGHT
+        print(json.dumps({
+            "upload_bytes": len(previews[0]),
+            "upload_size": [image.width, image.height],
+        }))
 
 
 def main() -> None:

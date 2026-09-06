@@ -24,7 +24,7 @@ import re
 from io import BytesIO
 
 try:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw, ImageFont, ImageOps
 except ImportError:
     print(json.dumps({"event": "error", "text": "missing dependency: PIL (pillow)"}))
     sys.exit(1)
@@ -460,6 +460,8 @@ _fb_fd = None
 _fb_size = 0
 _last_frame_key = None
 _last_static_frame_key = None
+_camera_frame = None
+_camera_frame_version = 0
 
 # ---- line-wrap state ----
 _line_wrap_lines = []
@@ -635,12 +637,38 @@ def _watercolor_image(status, now):
     ).convert("RGBA")
 
 
+def _set_camera_frame(jpeg_base64):
+    """Decode one camera preview frame and invalidate the static UI cache."""
+    global _camera_frame, _camera_frame_version
+    global _last_frame_key, _last_static_frame_key
+
+    replacement = None
+    if jpeg_base64:
+        if len(jpeg_base64) > 6 * 1024 * 1024:
+            raise ValueError("camera preview is too large")
+        raw = base64.b64decode(jpeg_base64, validate=True)
+        with Image.open(BytesIO(raw)) as source:
+            source.load()
+            replacement = source.convert("RGB")
+
+    previous = _camera_frame
+    _camera_frame = replacement
+    _camera_frame_version += 1
+    _last_frame_key = None
+    _last_static_frame_key = None
+    if previous is not None:
+        previous.close()
+
+
 def render_frame(status, emoji, text, code, terminal):
     """Render a full frame and write to framebuffer."""
     global _last_frame_key, _last_static_frame_key
     global _line_wrap_lines, _line_wrap_line, _line_wrap_next_ts, _line_wrap_current_text
     now = time.monotonic()
-    static_key = (status, emoji, text, code, terminal, _watercolor_suspended)
+    static_key = (
+        status, emoji, text, code, terminal,
+        _watercolor_suspended, _camera_frame_version,
+    )
     if (
         _watercolor is not None
         and static_key == _last_static_frame_key
@@ -655,6 +683,21 @@ def render_frame(status, emoji, text, code, terminal):
         orb_x = WIDTH - WATERCOLOR_PANE_WIDTH
         img.alpha_composite(_watercolor_image(status, now), (orb_x, 0))
     draw = ImageDraw.Draw(img, "RGBA")
+
+    bar_y = HEIGHT - 38
+    camera_visible = _camera_frame is not None
+    if camera_visible:
+        camera_top = 30
+        camera_height = max(1, bar_y - camera_top)
+        camera_width = min(144, max(1, round(camera_height * 4 / 3)))
+        preview = ImageOps.fit(
+            _camera_frame,
+            (camera_width, camera_height),
+            method=Image.Resampling.LANCZOS,
+            centering=(0.5, 0.5),
+        ).convert("RGBA")
+        img.alpha_composite(preview, (0, camera_top))
+        preview.close()
 
     # The top bar shares the black canvas; state is part of the title instead
     # of being repeated in a coloured band below it.
@@ -678,7 +721,7 @@ def render_frame(status, emoji, text, code, terminal):
 
     # Tool output replaces the normal status/prompt text while the emoji stays
     # in its original position on the right.
-    if terminal:
+    if terminal and not camera_visible:
         terminal_x = 8
         terminal_y = 34
         max_width = (
@@ -702,7 +745,9 @@ def render_frame(status, emoji, text, code, terminal):
                 fill=(80, 255, 120, 255),
             )
     # Content area
-    if terminal:
+    if camera_visible:
+        pass
+    elif terminal:
         pass
     elif status == "BINDING":
         draw.text((8, 39), "Go to xiaozhi.me to bind", font=_small_font, fill=(155, 160, 180, 255))
@@ -735,7 +780,6 @@ def render_frame(status, emoji, text, code, terminal):
         )
 
     # Bottom status bar - line-wrap display
-    bar_y = HEIGHT - 38
     draw.rectangle([0, bar_y, WIDTH, HEIGHT], fill=(50, 55, 70, 255))
     subtitle = _single_line_text(text)
     if subtitle:
@@ -772,7 +816,10 @@ def render_frame(status, emoji, text, code, terminal):
         _line_wrap_line = 0
         line_bucket = 0
 
-    frame_key = (status, emoji, text, code, terminal, line_bucket, _watercolor_suspended)
+    frame_key = (
+        status, emoji, text, code, terminal, line_bucket,
+        _watercolor_suspended, _camera_frame_version,
+    )
     if _watercolor is None and frame_key == _last_frame_key:
         img.close()
         return
@@ -864,6 +911,13 @@ def main():
                     cmd.get("sample_rate", 16000),
                     role,
                 )
+                continue
+
+            if cmd.get("cmd") == "camera_frame":
+                try:
+                    _set_camera_frame(cmd.get("jpeg", ""))
+                except Exception as exc:
+                    print(f"[display-bridge] camera preview error: {exc}", file=sys.stderr, flush=True)
                 continue
 
             if cmd.get("cmd") == "render":

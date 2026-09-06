@@ -63,6 +63,7 @@ async def run_bridge(args: argparse.Namespace) -> None:
     ws_ssl = SSL_CTX if args.url.startswith("wss://") else None
     progress_version = 0
     active_local_commands = 0
+    camera_frame_version = 0
 
     def emit_tool_progress(text: str | None) -> None:
         nonlocal progress_version
@@ -87,9 +88,24 @@ async def run_bridge(args: argparse.Namespace) -> None:
                 "active": "true" if active_local_commands else "false",
             }), flush=True)
 
+    def emit_camera_frame(jpeg: bytes | None) -> None:
+        nonlocal camera_frame_version
+        camera_frame_version += 1
+        version = camera_frame_version
+        encoded = base64.b64encode(jpeg).decode("ascii") if jpeg else ""
+        print(json.dumps({"event": "camera_frame", "jpeg": encoded}), flush=True)
+        if jpeg:
+            async def clear_later() -> None:
+                await asyncio.sleep(30.0)
+                if camera_frame_version == version:
+                    emit_camera_frame(None)
+
+            asyncio.create_task(clear_later())
+
     mcp_tools = McpTools(
         progress=emit_tool_progress,
         command_activity=emit_command_activity,
+        camera_preview=emit_camera_frame,
         device_id=args.device_id,
         client_id=args.client_id,
     )

@@ -19,6 +19,7 @@ public:
     }
     virtual void toggleDisplayMode() {}
     virtual void setCommandActive(bool active) { (void)active; }
+    virtual void setCameraFrame(const std::string& jpeg_base64) { (void)jpeg_base64; }
     virtual void renderState(AppState state, const std::string& text, const std::string& emoji) = 0;
 };
 
