@@ -82,8 +82,7 @@ mkdir -p \
 	"$PKG_ROOT/usr/share/APPLaunch/bin" \
 	"$PKG_ROOT/usr/share/APPLaunch/share/images" \
 	"$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi" \
-	"$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/vendor" \
-	"$PKG_ROOT/usr/lib/tmpfiles.d"
+	"$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/vendor"
 
 install -m 0755 "$BIN" "$PKG_ROOT/usr/share/APPLaunch/bin/$BIN_NAME"
 install -m 0644 "$ROOT_DIR/main/tools/ws_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/ws_bridge.py"
@@ -100,13 +99,6 @@ if [[ ! -f "$ICON_SRC" ]]; then
 	exit 1
 fi
 install -m 0644 "$ICON_SRC" "$PKG_ROOT/usr/share/APPLaunch/share/images/xiaozhi.png"
-
-# Linux 6.18 names the default CMA heap "default_cma_region", while the
-# Raspberry Pi camera allocator still opens the legacy "linux,cma" path.
-# systemd-tmpfiles recreates this compatibility link whenever /dev is rebuilt.
-cat > "$PKG_ROOT/usr/lib/tmpfiles.d/cardputerzero-xiaozhi-camera.conf" <<'EOF'
-L /dev/dma_heap/linux,cma - - - - /dev/dma_heap/default_cma_region
-EOF
 
 # Bundle required fonts into the .deb.
 FONT_DST="$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/fonts"
@@ -158,6 +150,13 @@ export XIAOZHI_WEB_TOOL_PROXY="${XIAOZHI_WEB_TOOL_PROXY:-http://192.168.100.124:
 unset AUDIODEV
 unset XIAOZHI_AUDIO_CAPTURE_DEVICE
 unset XIAOZHI_AUDIO_PLAYBACK_DEVICE
+
+# Linux 6.18 renamed the default CMA heap. APPLaunch runs this wrapper as root,
+# so recreate the compatibility link on every launch without installing a file
+# into the shared tmpfiles.d directory rejected by the app-store policy.
+if [ -e /dev/dma_heap/default_cma_region ] && [ ! -e '/dev/dma_heap/linux,cma' ]; then
+	ln -s default_cma_region '/dev/dma_heap/linux,cma' 2>/dev/null || true
+fi
 
 # Initialize ES8389 codec mixer (capture gain, output volume, routing)
 amixer -c 1 sset 'ADC MUX' AMIC 2>/dev/null || true
@@ -308,7 +307,9 @@ if [ -x "$INSTALLER" ]; then
 	XIAOZHI_WEB_TOOL_PROXY="${XIAOZHI_WEB_TOOL_PROXY:-http://192.168.100.124:7890}" \
 	"$INSTALLER"
 fi
-systemd-tmpfiles --create /usr/lib/tmpfiles.d/cardputerzero-xiaozhi-camera.conf 2>/dev/null || true
+if [ -e /dev/dma_heap/default_cma_region ] && [ ! -e '/dev/dma_heap/linux,cma' ]; then
+	ln -s default_cma_region '/dev/dma_heap/linux,cma' 2>/dev/null || true
+fi
 EOF
 chmod 0755 "$PKG_ROOT/DEBIAN/postinst"
 
