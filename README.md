@@ -8,6 +8,7 @@ XiaoZhi voice assistant ported to M5Cardputer (Raspberry Pi Zero + framebuffer d
 
 - Two-way voice conversation via WebSocket (Opus codec)
 - Framebuffer UI with CJK + emoji rendering
+- Optional audio-reactive Whisplay watercolor orb UI
 - OTA activation code flow for xiaozhi.me binding
 - Push-to-talk (SPACE key) with server-side VAD
 - Continuous conversation mode (auto re-listen after TTS finishes)
@@ -55,7 +56,7 @@ sudo apt-get install -y libsdl2-dev libsdl2-ttf-dev libopus0 fonts-noto-cjk pyth
 
 ```bash
 ./build.sh --device --package
-# Output: build/cardputerzero-xiaozhi_0.2.4-m5stack1_arm64.deb
+# Output: build/cardputerzero-xiaozhi_0.2.5-m5stack1_arm64.deb
 ```
 
 ### Cross-compile from macOS (aarch64)
@@ -78,8 +79,8 @@ python3 -m pip install websockets
 
 Every push to `main` or `ci/**` branches triggers an automatic arm64 `.deb` build
 and publishes a prerelease. Tagged pushes (`v*`) attach the `.deb` to the release,
-with the package version derived from the tag name, so `v0.2.4` builds
-`cardputerzero-xiaozhi_0.2.4-..._arm64.deb`.
+with the package version derived from the tag name, so `v0.2.5` builds
+`cardputerzero-xiaozhi_0.2.5-..._arm64.deb`.
 
 Pre-built packages are available on the [Releases](https://github.com/JdaieLin/cardputer-xiaozhi/releases) page.
 
@@ -92,9 +93,9 @@ Recommended publish flow:
 
 ```bash
 ./build.sh --device --package
-python3 /path/to/prepublish_check.py --deb build/cardputerzero-xiaozhi_0.2.4-m5stack1_arm64.deb --app-dir .
+python3 /path/to/prepublish_check.py --deb build/cardputerzero-xiaozhi_0.2.5-m5stack1_arm64.deb --app-dir .
 czdev login
-czdev publish --deb build/cardputerzero-xiaozhi_0.2.4-m5stack1_arm64.deb
+czdev publish --deb build/cardputerzero-xiaozhi_0.2.5-m5stack1_arm64.deb
 ```
 
 To regenerate the listing screenshots:
@@ -117,8 +118,8 @@ This script:
 ### Manual install
 
 ```bash
-scp build/cardputerzero-xiaozhi_0.2.4-m5stack1_arm64.deb pi@192.168.100.199:/tmp/
-ssh pi@192.168.100.199 "sudo dpkg -i /tmp/cardputerzero-xiaozhi_0.2.4-m5stack1_arm64.deb"
+scp build/cardputerzero-xiaozhi_0.2.5-m5stack1_arm64.deb pi@192.168.100.199:/tmp/
+ssh pi@192.168.100.199 "sudo dpkg -i /tmp/cardputerzero-xiaozhi_0.2.5-m5stack1_arm64.deb"
 ssh pi@192.168.100.199 "sudo systemctl restart APPLaunch.service"
 ```
 
@@ -127,6 +128,7 @@ ssh pi@192.168.100.199 "sudo systemctl restart APPLaunch.service"
 | Key | Action |
 |-----|--------|
 | `SPACE` / `ENTER` | Wake / push-to-talk |
+| `O` | Toggle classic / watercolor display mode |
 | `Esc` | Return to app launcher |
 | Close window / `Ctrl+C` | Exit |
 
@@ -179,6 +181,32 @@ During installation, `tools/install.sh` downloads `emoji_svg.zip` from Whisplay'
 server and extracts it beside `display_bridge.py`. Override the source with
 `XIAOZHI_EMOJI_ASSET_URL`; the renderer falls back to the bundled emoji font if the
 download is unavailable.
+
+### Watercolor orb UI
+
+Set `XIAOZHI_DISPLAY_UI_STYLE=watercolor` in `~/.config/xiaozhi/tools.env` to
+enable the audio-reactive renderer ported from `whisplay-xiaozhi` v1.4.0. The orb is
+drawn on the right at roughly two-thirds of the 170-pixel display height; the
+current emoji becomes a small lower-left badge overlapping its edge. Classic
+mode remains the default.
+
+The repository and `.deb` include Whisplay v1.4.0's precompiled aarch64 Rust
+renderer beside `display_bridge.py`, together with its GPLv3 license. The
+installer verifies the pinned SHA-256 and downloads a replacement only when
+the bundled file is missing or invalid. Override the fallback source with
+`XIAOZHI_WATERCOLOR_RENDERER_URL` and the matching
+`XIAOZHI_WATERCOLOR_RENDERER_SHA256` when needed. Emoji SVG artwork remains an
+install-time download and is not stored in this repository or the `.deb`.
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `XIAOZHI_DISPLAY_UI_STYLE` | `classic` | Select `classic` or `watercolor` |
+| `XIAOZHI_WATERCOLOR_FPS` | `15` | Animation frame rate (1–20) |
+| `XIAOZHI_WATERCOLOR_DIAMETER` | `113` | Orb diameter in pixels |
+| `XIAOZHI_WATERCOLOR_RENDER_SCALE` | `0.60` | High-quality internal render scale (0.2–1.0) |
+| `XIAOZHI_WATERCOLOR_SMOOTH_FBM` | `true` | Smooth pigment boundaries |
+| `XIAOZHI_WATERCOLOR_TEMPORAL_3D` | `true` | Enable temporal watercolor detail |
+| `XIAOZHI_WATERCOLOR_THREADS` | `2` | Native renderer threads (1–4) |
 
 ## Architecture
 

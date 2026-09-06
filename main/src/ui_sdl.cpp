@@ -2,7 +2,6 @@
 
 #include <cstdlib>
 #include <iostream>
-#include <array>
 #include <regex>
 #include <vector>
 
@@ -38,6 +37,18 @@ std::vector<std::string> splitUtf8Glyphs(const std::string& text) {
         i += width;
     }
     return glyphs;
+}
+
+const char* friendlyStateName(AppState state) {
+    switch (state) {
+        case AppState::Binding: return "Binding";
+        case AppState::Idle: return "Idle";
+        case AppState::Listening: return "Listening";
+        case AppState::Thinking: return "Thinking";
+        case AppState::Speaking: return "Speaking";
+        case AppState::Error: return "Error";
+    }
+    return "Idle";
 }
 
 }  // namespace
@@ -105,29 +116,7 @@ void UiSdl::renderState(AppState state, const std::string& text, const std::stri
     const std::string source_text = force_text_.empty() ? text : force_text_;
     const std::string display_text = marqueeText(source_text);
 
-    std::array<unsigned char, 3> color{30, 86, 145};
-    switch (state) {
-        case AppState::Binding:
-            color = {30, 50, 95};
-            break;
-        case AppState::Idle:
-            color = {35, 80, 35};
-            break;
-        case AppState::Listening:
-            color = {25, 85, 130};
-            break;
-        case AppState::Thinking:
-            color = {120, 100, 20};
-            break;
-        case AppState::Speaking:
-            color = {110, 40, 90};
-            break;
-        case AppState::Error:
-            color = {130, 25, 25};
-            break;
-    }
-
-    SDL_SetRenderDrawColor(renderer_, color[0], color[1], color[2], 255);
+    SDL_SetRenderDrawColor(renderer_, 10, 10, 15, 255);
     SDL_RenderClear(renderer_);
 
     constexpr int kPanelX = 20;
@@ -144,13 +133,11 @@ void UiSdl::renderState(AppState state, const std::string& text, const std::stri
 
     const SDL_Rect title_rect = {kPanelX + kPanelPad, kPanelY + kPanelPad - 2, 300, 32};
     const SDL_Rect emoji_rect = {kPanelX + kPanelW - kPanelPad - 56, kPanelY + kPanelPad - 6, 56, 56};
-    const SDL_Rect state_rect = {kPanelX + kPanelPad, kPanelY + 42, 220, 24};
-    const SDL_Rect hint_rect = {kPanelX + kPanelPad, kPanelY + 74, kPanelW - (kPanelPad * 2), 24};
+    const SDL_Rect hint_rect = {kPanelX + kPanelPad, kPanelY + 48, kPanelW - (kPanelPad * 2), 24};
     const SDL_Rect code_rect = {kPanelX + kPanelPad, kPanelY + 102, kPanelW - (kPanelPad * 2), 52};
 
-    drawSdlText(renderer_, title_rect, "Cardputer XiaoZhi", {{235, 235, 235, 255}, 24.0f, true, false, false});
+    drawSdlText(renderer_, title_rect, std::string("Xiaozhi - ") + friendlyStateName(state), {{235, 235, 235, 255}, 24.0f, true, false, false});
     drawSdlText(renderer_, emoji_rect, emoji.empty() ? stateEmoji(state) : emoji, {{255, 255, 255, 255}, 30.0f, false, true, false});
-    drawSdlText(renderer_, state_rect, stateName(state), {{210, 210, 210, 255}, 16.0f, false, false, false});
 
     if (state == AppState::Binding) {
         drawSdlText(renderer_, hint_rect, "Go to xiaozhi.me to bind", {{240, 240, 240, 255}, 17.0f, false, false, false});

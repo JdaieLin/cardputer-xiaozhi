@@ -95,6 +95,9 @@ void HalEvdev::poll() {
                 std::cout << "[hal-evdev] HOME/ESC press -> request quit" << std::endl;
                 should_quit_ = true;
             }
+        } else if (ev.code == KEY_O && ev.value == 1) {
+            std::cout << "[hal-evdev] O press -> toggle display mode" << std::endl;
+            if (display_mode_toggle_cb_) display_mode_toggle_cb_();
         }
     }
 }
@@ -109,6 +112,10 @@ void HalEvdev::onButtonPressed(std::function<void()> cb) {
 
 void HalEvdev::onButtonReleased(std::function<void()> cb) {
     release_cb_ = std::move(cb);
+}
+
+void HalEvdev::onDisplayModeToggle(std::function<void()> cb) {
+    display_mode_toggle_cb_ = std::move(cb);
 }
 
 }  // namespace xiaozhi

@@ -133,7 +133,6 @@ void UiFbdev::renderState(AppState state, const std::string& text, const std::st
     }
 
     const uint16_t bg = rgb565(10, 10, 15);
-    const uint16_t header_bg = stateColor(state);
     const uint16_t white = rgb565(255, 255, 255);
     const uint16_t dim = rgb565(140, 140, 160);
     const uint16_t code_color = rgb565(255, 244, 180);
@@ -141,39 +140,34 @@ void UiFbdev::renderState(AppState state, const std::string& text, const std::st
 
     fillRect(0, 0, kWidth, kHeight, bg);
 
-    fillRect(0, 0, kWidth, 34, header_bg);
-
-    drawText(12, 8, "XIAOZHI", 2, white);
+    drawText(8, 8, std::string("Xiaozhi - ") + stateLabel(state), 2, white);
 
     std::string emoji_str;
     if (!emoji.empty()) {
         emoji_str = emoji;
     }
-    drawEmoji(kWidth - 42, 5, 2, state, emoji_str);
-
-    const char* label = stateLabel(state);
-    drawText(12, 42, label, 2, white);
+    drawEmoji(kWidth - 42, 38, 2, state, emoji_str);
 
     if (state == AppState::Binding) {
-        drawText(16, 68, "Go to xiaozhi.me to bind", 1, dim);
+        drawText(16, 42, "Go to xiaozhi.me to bind", 1, dim);
         std::string code_str;
         for (char c : text) {
             if (c >= '0' && c <= '9') code_str.push_back(c);
         }
         if (code_str.size() == 6) {
             int cw = textWidth("000000", 4);
-            drawText((kWidth - cw) / 2, 96, code_str, 4, code_color);
+            drawText((kWidth - cw) / 2, 76, code_str, 4, code_color);
         }
     } else if (state == AppState::Idle) {
-        drawText(16, 68, "SPACE / ENTER TO WAKE", 1, dim);
+        drawText(16, 42, "SPACE / ENTER TO WAKE", 1, dim);
     } else if (state == AppState::Listening) {
-        drawText(16, 68, "Listening...", 1, dim);
+        drawText(16, 42, "Listening...", 1, dim);
     } else if (state == AppState::Thinking) {
-        drawText(16, 68, "Thinking...", 1, dim);
+        drawText(16, 42, "Thinking...", 1, dim);
     } else if (state == AppState::Speaking) {
-        drawText(16, 68, "Speaking...", 1, dim);
+        drawText(16, 42, "Speaking...", 1, dim);
     } else if (state == AppState::Error) {
-        drawText(16, 68, "ERROR", 1, rgb565(255, 80, 80));
+        drawText(16, 42, "ERROR", 1, rgb565(255, 80, 80));
     }
 
     fillRect(0, kHeight - 36, kWidth, 36, rgb565(30, 30, 40));
@@ -379,12 +373,12 @@ uint16_t UiFbdev::stateColor(AppState state) {
 
 const char* UiFbdev::stateLabel(AppState state) {
     switch (state) {
-        case AppState::Binding:    return "BINDING";
-        case AppState::Idle:       return "IDLE";
-        case AppState::Listening:  return "LISTENING...";
-        case AppState::Thinking:   return "THINKING...";
-        case AppState::Speaking:   return "SPEAKING...";
-        case AppState::Error:      return "ERROR";
+        case AppState::Binding:    return "Binding";
+        case AppState::Idle:       return "Idle";
+        case AppState::Listening:  return "Listening";
+        case AppState::Thinking:   return "Thinking";
+        case AppState::Speaking:   return "Speaking";
+        case AppState::Error:      return "Error";
     }
     return "UNKNOWN";
 }

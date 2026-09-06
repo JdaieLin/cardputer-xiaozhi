@@ -16,6 +16,10 @@ import struct
 import traceback
 import select
 import time
+import array
+import base64
+import importlib.util
+import math
 from io import BytesIO
 
 try:
@@ -23,6 +27,11 @@ try:
 except ImportError:
     print(json.dumps({"event": "error", "text": "missing dependency: PIL (pillow)"}))
     sys.exit(1)
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 # CairoSVG has a comparatively expensive import on small Raspberry Pi models.
 # Load it only when an SVG emoji is actually needed so the display handshake is
@@ -38,6 +47,28 @@ FB_DEV = os.environ.get("XIAOZHI_FBDEV", os.environ.get("APPLAUNCH_LINUX_FBDEV_D
 WIDTH = int(os.environ.get("XIAOZHI_FB_WIDTH", "320"))
 HEIGHT = int(os.environ.get("XIAOZHI_FB_HEIGHT", "170"))
 SNAPSHOT_PATH = os.environ.get("XIAOZHI_RENDER_PNG_PATH", "")
+UI_STYLE = os.environ.get(
+    "XIAOZHI_DISPLAY_UI_STYLE", os.environ.get("DISPLAY_UI_STYLE", "classic")
+).strip().lower()
+if UI_STYLE not in {"classic", "watercolor"}:
+    UI_STYLE = "classic"
+WATERCOLOR_FPS = max(1, min(20, int(os.environ.get("XIAOZHI_WATERCOLOR_FPS", "15"))))
+WATERCOLOR_DIAMETER = max(
+    80,
+    min(HEIGHT - 20, int(os.environ.get("XIAOZHI_WATERCOLOR_DIAMETER", str(round(HEIGHT * 2 / 3))))),
+)
+WATERCOLOR_RENDER_SCALE = max(
+    0.2, min(1.0, float(os.environ.get("XIAOZHI_WATERCOLOR_RENDER_SCALE", "0.60")))
+)
+WATERCOLOR_SMOOTH_FBM = os.environ.get("XIAOZHI_WATERCOLOR_SMOOTH_FBM", "true").strip().lower() in {
+    "1", "true", "yes", "on"
+}
+WATERCOLOR_TEMPORAL_3D = os.environ.get("XIAOZHI_WATERCOLOR_TEMPORAL_3D", "true").strip().lower() in {
+    "1", "true", "yes", "on"
+}
+WATERCOLOR_THREADS = max(1, min(4, int(os.environ.get("XIAOZHI_WATERCOLOR_THREADS", "2"))))
+WATERCOLOR_PANE_WIDTH = min(WIDTH, WATERCOLOR_DIAMETER + 8)
+WATERCOLOR_PANE_HEIGHT = max(WATERCOLOR_DIAMETER + 20, HEIGHT - 12)
 
 # ---- font setup ----
 _FONT_SEARCH = [
@@ -127,6 +158,113 @@ print(
 )
 
 
+def _load_watercolor_renderer(force=False):
+    if not force and UI_STYLE != "watercolor":
+        return None
+    extension = os.path.join(SCRIPT_DIR, "_watercolor_rust.so")
+    if not os.path.isfile(extension):
+        raise RuntimeError(
+            "watercolor mode requires _watercolor_rust.so; rerun tools/install.sh"
+        )
+    spec = importlib.util.spec_from_file_location("_watercolor_rust", extension)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"unable to load watercolor renderer: {extension}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.OrbRenderer(
+        WATERCOLOR_PANE_WIDTH,
+        WATERCOLOR_PANE_HEIGHT,
+        WATERCOLOR_DIAMETER,
+        WATERCOLOR_RENDER_SCALE,
+        WATERCOLOR_SMOOTH_FBM,
+        WATERCOLOR_TEMPORAL_3D,
+        3.6,
+        0.70,
+        4.5,
+        WATERCOLOR_THREADS,
+    )
+
+
+try:
+    _watercolor = _load_watercolor_renderer()
+except Exception as exc:
+    print(json.dumps({"event": "error", "text": str(exc)}), flush=True)
+    sys.exit(1)
+
+_watercolor_phase = 0.0
+_watercolor_clock = time.monotonic()
+_watercolor_last_frame = 0.0
+_audio_features = {
+    "user": {
+        "level": 0.0,
+        "peak": 0.0,
+        "bands": (0.0, 0.0, 0.0, 0.0),
+        "cumulative": [0.0, 0.0, 0.0, 0.0],
+        "updated_at": 0.0,
+    },
+    "assistant": {
+        "level": 0.0,
+        "peak": 0.0,
+        "bands": (0.0, 0.0, 0.0, 0.0),
+        "cumulative": [0.0, 0.0, 0.0, 0.0],
+        "updated_at": 0.0,
+    },
+}
+
+
+def _update_audio_features(pcm_b64, sample_rate, role):
+    """Match whisplay-xiaozhi's PCM-driven watercolor analysis."""
+    if _watercolor is None or np is None or role not in _audio_features or not pcm_b64:
+        return
+    try:
+        pcm = base64.b64decode(pcm_b64, validate=True)
+        samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
+    except (ValueError, TypeError):
+        return
+    if samples.size < 16:
+        return
+
+    samples -= float(np.mean(samples))
+    rms = float(np.sqrt(np.mean(samples * samples)))
+    peak = float(np.max(np.abs(samples)))
+    level = min(1.0, rms * 5.5)
+    window = np.hanning(samples.size)
+    spectrum_amplitude = (
+        np.abs(np.fft.rfft(samples * window))
+        * (2.0 / max(1.0, float(np.sum(window))))
+    )
+    spectrum_db = 20.0 * np.log10(np.maximum(spectrum_amplitude, 1.0e-8))
+    spectrum = np.sqrt(
+        np.clip(1.0 + np.clip(spectrum_db, -100.0, -10.0) / 100.0, 0.0, 1.0)
+    )
+    sample_rate = max(1, int(sample_rate))
+    frequencies = np.fft.rfftfreq(samples.size, 1.0 / sample_rate)
+    nyquist = max(40.0, sample_rate * 0.5)
+    edges = np.geomspace(20.0, nyquist, 4)
+    raw_bands = []
+    for index, (low, high) in enumerate(zip(edges[:-1], edges[1:])):
+        values = spectrum[(frequencies >= low) & (frequencies < high)]
+        magnitude = float(np.median(values)) if values.size else 0.0
+        magnitude *= (10.0, 1.0, 1.0)[index]
+        raw_bands.append(magnitude / (magnitude + 1.0))
+    audible = spectrum[(frequencies >= 20.0) & (frequencies < nyquist)]
+    overall = float(np.median(audible)) if audible.size else 0.0
+    overall = overall / (overall + 1.0)
+    raw_audio = (*raw_bands, overall)
+    duration = samples.size / sample_rate
+    smoothing = 1.0 - math.exp(-duration / 2.0)
+    target = _audio_features[role]
+    target["level"] = level
+    target["peak"] = min(1.0, peak * 1.8)
+    target["bands"] = tuple(
+        previous + (value - previous) * smoothing
+        for previous, value in zip(target["bands"], raw_audio)
+    )
+    for index, value in enumerate(raw_audio):
+        target["cumulative"][index] += value * duration * 20.0
+    target["updated_at"] = time.monotonic()
+
+
 def _normalize_emoji(s):
     if not s:
         return "😄"
@@ -180,6 +318,18 @@ def _emoji_svg_image(emoji, size):
 
 def img_to_rgb565(img):
     """Convert PIL RGBA image to raw RGB565 bytes, little-endian."""
+    if np is not None:
+        pixels = np.asarray(img, dtype=np.uint8)
+        red = pixels[:, :, 0].astype(np.uint16)
+        green = pixels[:, :, 1].astype(np.uint16)
+        blue = pixels[:, :, 2].astype(np.uint16)
+        packed = ((red >> 3) << 11) | ((green >> 2) << 5) | (blue >> 3)
+        if pixels.shape[2] > 3:
+            packed[pixels[:, :, 3] < 128] = 0
+        return packed.astype("<u2", copy=False).tobytes()
+
+    # Compatibility fallback for environments without NumPy. This path is
+    # much slower and is not used by the APPLaunch package.
     data = bytearray()
     pixels = img.load()
     for y in range(img.height):
@@ -192,20 +342,11 @@ def img_to_rgb565(img):
     return bytes(data)
 
 
-# ---- state colors ----
-STATE_COLORS = {
-    "BINDING":   (30, 70, 140),
-    "IDLE":      (40, 110, 50),
-    "LISTENING": (30, 100, 170),
-    "THINKING":  (180, 140, 20),
-    "SPEAKING":  (160, 50, 130),
-    "ERROR":     (180, 30, 30),
-}
-
 # ---- framebuffer device ----
 _fb_fd = None
 _fb_size = 0
 _last_frame_key = None
+_last_static_frame_key = None
 
 # ---- line-wrap state ----
 _line_wrap_lines = []
@@ -258,60 +399,140 @@ def _wrap_text(text, font, max_width):
     return lines or [text]
 
 
-def render_frame(status, emoji, text, code, terminal):
-    """Render a full frame and write to framebuffer."""
-    global _last_frame_key
-    global _line_wrap_lines, _line_wrap_line, _line_wrap_next_ts, _line_wrap_current_text
-    img = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 255))
-    draw = ImageDraw.Draw(img, "RGBA")
+def _state_title(status):
+    return {
+        "BINDING": "Binding",
+        "IDLE": "Idle",
+        "LISTENING": "Listening",
+        "THINKING": "Thinking",
+        "SPEAKING": "Speaking",
+        "ERROR": "Error",
+    }.get(status, "Idle")
 
-    header_h = 36
-    color = STATE_COLORS.get(status, STATE_COLORS["IDLE"])
 
-    # Header bar
-    draw.rectangle([0, 0, WIDTH, header_h], fill=(color[0], color[1], color[2], 255))
-
-    # Title
-    draw.text((8, 7), "XIAOZHI", font=_status_font, fill=(255, 255, 255, 255))
-
-    # Emoji
+def _draw_emoji(img, draw, emoji, target, x, y):
     emoji = _normalize_emoji(emoji)
-    emoji_target = 40
-    svg_emoji = _emoji_svg_image(emoji, emoji_target)
+    svg_emoji = _emoji_svg_image(emoji, target)
     if svg_emoji is not None:
-        ex = WIDTH - svg_emoji.width - 8
-        ey = header_h + 7
-        img.alpha_composite(svg_emoji, (ex, ey))
-    elif _emoji_use_embedded:
-        # Render color glyph then resize with alpha-safe nearest sampling to avoid dark fringes.
+        img.alpha_composite(svg_emoji, (x, y))
+        return svg_emoji.width, svg_emoji.height
+    if _emoji_use_embedded:
         scratch = Image.new("RGBA", (160, 160), (0, 0, 0, 0))
         sdraw = ImageDraw.Draw(scratch, "RGBA")
         sdraw.text((0, 0), emoji, font=_emoji_font, embedded_color=True)
-        eb = scratch.getbbox()
-        if eb is not None:
-            eg = scratch.crop(eb)
-            ratio = eg.height / max(1, eg.width)
-            tw = max(emoji_target, int(emoji_target / max(0.6, ratio)))
-            th = max(emoji_target, int(emoji_target * max(0.6, ratio)))
-            eg = eg.resize((tw, th), Image.Resampling.NEAREST)
-            ex = WIDTH - eg.width - 8
-            ey = header_h + 6
-            img.alpha_composite(eg, (ex, ey))
-        else:
-            draw.text((WIDTH - 30, header_h + 6), emoji, font=_text_font, fill=(255, 255, 255, 255))
+        bbox = scratch.getbbox()
+        if bbox is not None:
+            glyph = scratch.crop(bbox)
+            glyph.thumbnail((target, target), Image.Resampling.NEAREST)
+            img.alpha_composite(glyph, (x, y))
+            return glyph.width, glyph.height
+    draw.text((x, y), emoji, font=_emoji_font, fill=(255, 255, 255, 255))
+    bbox = _emoji_font.getbbox(emoji)
+    return max(1, bbox[2] - bbox[0]), max(1, bbox[3] - bbox[1])
+
+
+def _watercolor_image(status, now):
+    global _watercolor_phase, _watercolor_clock, _watercolor_last_frame
+    elapsed = min(0.10, max(0.0, now - _watercolor_clock))
+    _watercolor_clock = now
+    _watercolor_phase += elapsed
+    _watercolor_last_frame = now
+
+    role = "assistant" if status == "SPEAKING" else "user"
+    features = _audio_features[role]
+    decay = math.exp(-max(0.0, now - features["updated_at"]) * 5.0)
+    level = features["level"] * decay
+    peak = features["peak"] * decay
+    bands = tuple(value * decay for value in features["bands"])
+    idle = 0.025 * (0.55 + 0.45 * math.sin(_watercolor_phase * 0.85))
+    if status == "SPEAKING":
+        pigment_level = max(idle, level)
+        pigment_bands = bands
+        visual_scale = 1.0
     else:
-        bbox = _emoji_font.getbbox(emoji)
-        ew = bbox[2] - bbox[0]
-        ex = WIDTH - ew - 8
-        ey = header_h + 6
-        draw.text((ex, ey), emoji, font=_emoji_font, fill=(255, 255, 255, 255))
+        pigment_level = idle
+        pigment_bands = [0.0, 0.0, 0.0, 0.0]
+        visual_scale = (
+            1.0 + min(0.13, level * 0.10 + peak * 0.035)
+            if status == "LISTENING"
+            else 1.0
+        )
+
+    packed = _watercolor.rgb565(
+        _watercolor_phase,
+        pigment_level,
+        peak,
+        pigment_bands,
+        tuple(_audio_features["assistant"]["cumulative"]),
+        visual_scale,
+        None,
+    )
+    # Whisplay's SPI renderer returns network-order RGB565. CardputerZero's
+    # framebuffer and Pillow's BGR;16 decoder use little-endian packed words.
+    words = array.array("H")
+    words.frombytes(packed)
+    if sys.byteorder == "little":
+        words.byteswap()
+    return Image.frombytes(
+        "RGB",
+        (WATERCOLOR_PANE_WIDTH, WATERCOLOR_PANE_HEIGHT),
+        words.tobytes(),
+        "raw",
+        "BGR;16",
+    ).convert("RGBA")
+
+
+def render_frame(status, emoji, text, code, terminal):
+    """Render a full frame and write to framebuffer."""
+    global _last_frame_key, _last_static_frame_key
+    global _line_wrap_lines, _line_wrap_line, _line_wrap_next_ts, _line_wrap_current_text
+    now = time.monotonic()
+    static_key = (status, emoji, text, code, terminal)
+    if (
+        _watercolor is not None
+        and static_key == _last_static_frame_key
+        and now - _watercolor_last_frame < 1.0 / WATERCOLOR_FPS
+    ):
+        return
+    _last_static_frame_key = static_key
+
+    img = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 255))
+    orb_x = WIDTH
+    if _watercolor is not None:
+        orb_x = WIDTH - WATERCOLOR_PANE_WIDTH
+        img.alpha_composite(_watercolor_image(status, now), (orb_x, 0))
+    draw = ImageDraw.Draw(img, "RGBA")
+
+    # The top bar shares the black canvas; state is part of the title instead
+    # of being repeated in a coloured band below it.
+    draw.text(
+        (8, 5),
+        f"Xiaozhi - {_state_title(status)}",
+        font=_status_font,
+        fill=(245, 245, 248, 255),
+    )
+
+    emoji = _normalize_emoji(emoji)
+    if _watercolor is not None:
+        emoji_target = 28
+        emoji_x = orb_x - 3
+        emoji_y = HEIGHT - 38 - emoji_target - 9
+    else:
+        emoji_target = 40
+        emoji_x = WIDTH - emoji_target - 8
+        emoji_y = 37
+    _draw_emoji(img, draw, emoji, emoji_target, emoji_x, emoji_y)
 
     # Tool output replaces the normal status/prompt text while the emoji stays
     # in its original position on the right.
     if terminal:
         terminal_x = 8
-        terminal_y = 43
-        max_width = WIDTH - terminal_x - emoji_target - 24
+        terminal_y = 34
+        max_width = (
+            orb_x - terminal_x - 12
+            if _watercolor is not None
+            else WIDTH - terminal_x - emoji_target - 24
+        )
         raw_lines = terminal.replace("\r\n", "\n").replace("\r", "\n").split("\n")
         lines = [line for line in raw_lines if line][-6:]
         line_height = 11
@@ -327,28 +548,32 @@ def render_frame(status, emoji, text, code, terminal):
                 font=_terminal_font,
                 fill=(80, 255, 120, 255),
             )
-    else:
-        draw.text((8, 43), status, font=_status_font, fill=(235, 240, 245, 255))
-
     # Content area
     if terminal:
         pass
     elif status == "BINDING":
-        draw.text((8, 67), "Go to xiaozhi.me to bind", font=_small_font, fill=(155, 160, 180, 255))
+        draw.text((8, 39), "Go to xiaozhi.me to bind", font=_small_font, fill=(155, 160, 180, 255))
         if code and len(code) == 6:
             bbox = _code_font.getbbox(code)
             cw = bbox[2] - bbox[0]
-            draw.text(((WIDTH - cw) // 2, 92), code, font=_code_font, fill=(235, 240, 255, 255))
+            content_width = orb_x if _watercolor is not None else WIDTH
+            draw.text(((content_width - cw) // 2, 72), code, font=_code_font, fill=(235, 240, 255, 255))
     elif status == "IDLE":
-        draw.text((8, 67), "SPACE to talk", font=_small_font, fill=(155, 160, 180, 255))
+        draw.text((8, 39), "SPACE to talk", font=_small_font, fill=(155, 160, 180, 255))
+        draw.text(
+            (8, 58),
+            "O: switch display mode",
+            font=_small_font,
+            fill=(105, 112, 132, 255),
+        )
     elif status == "LISTENING":
-        draw.text((8, 67), "Listening...", font=_small_font, fill=(155, 160, 180, 255))
+        draw.text((8, 39), "Listening...", font=_small_font, fill=(155, 160, 180, 255))
     elif status == "THINKING":
-        draw.text((8, 67), "Thinking...", font=_small_font, fill=(155, 160, 180, 255))
+        draw.text((8, 39), "Thinking...", font=_small_font, fill=(155, 160, 180, 255))
     elif status == "SPEAKING":
-        draw.text((8, 67), "Speaking...", font=_small_font, fill=(155, 160, 180, 255))
+        draw.text((8, 39), "Speaking...", font=_small_font, fill=(155, 160, 180, 255))
     elif status == "ERROR":
-        draw.text((8, 67), "ERROR", font=_small_font, fill=(200, 40, 40, 255))
+        draw.text((8, 39), "ERROR", font=_small_font, fill=(200, 40, 40, 255))
 
     # Bottom status bar - line-wrap display
     bar_y = HEIGHT - 38
@@ -374,7 +599,6 @@ def render_frame(status, emoji, text, code, terminal):
                 _line_wrap_line = 0
                 _line_wrap_next_ts = time.monotonic() + _LINE_SHOW_S + _LINE_EXTEND_S
             else:
-                now = time.monotonic()
                 if now >= _line_wrap_next_ts and _line_wrap_line + 1 < len(_line_wrap_lines):
                     _line_wrap_line += 1
                     _line_wrap_next_ts = now + _LINE_SHOW_S
@@ -389,8 +613,7 @@ def render_frame(status, emoji, text, code, terminal):
         line_bucket = 0
 
     frame_key = (status, emoji, text, code, terminal, line_bucket)
-    global _last_frame_key
-    if frame_key == _last_frame_key:
+    if _watercolor is None and frame_key == _last_frame_key:
         img.close()
         return
     _last_frame_key = frame_key
@@ -406,7 +629,7 @@ def render_frame(status, emoji, text, code, terminal):
 
 
 def main():
-    global _fb_fd
+    global _fb_fd, _watercolor, _last_frame_key, _last_static_frame_key
     fb_open()
     print(json.dumps({"event": "connected"}), flush=True)
 
@@ -420,7 +643,8 @@ def main():
     }
 
     while True:
-        readable, _, _ = select.select([sys.stdin], [], [], 0.08)
+        timeout = min(0.08, 1.0 / WATERCOLOR_FPS) if _watercolor is not None else 0.08
+        readable, _, _ = select.select([sys.stdin], [], [], timeout)
         if readable:
             line = sys.stdin.readline()
             if not line:
@@ -436,6 +660,31 @@ def main():
 
             if cmd.get("cmd") == "quit":
                 break
+
+            if cmd.get("cmd") == "toggle_style":
+                if _watercolor is not None:
+                    _watercolor = None
+                    style = "classic"
+                else:
+                    try:
+                        _watercolor = _load_watercolor_renderer(force=True)
+                        style = "watercolor"
+                    except Exception as exc:
+                        print(json.dumps({"event": "error", "text": str(exc)}), flush=True)
+                        continue
+                _last_frame_key = None
+                _last_static_frame_key = None
+                print(json.dumps({"event": "display_style", "style": style}), flush=True)
+                continue
+
+            if cmd.get("cmd") == "audio":
+                role = cmd.get("role", "user")
+                _update_audio_features(
+                    cmd.get("pcm", ""),
+                    cmd.get("sample_rate", 16000),
+                    role,
+                )
+                continue
 
             if cmd.get("cmd") == "render":
                 try:

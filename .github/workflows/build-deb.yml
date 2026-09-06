@@ -22,7 +22,7 @@ jobs:
             build-essential pkg-config fakeroot \
             libsdl2-dev libsdl2-ttf-dev dpkg-dev libopus0 \
             fonts-noto-cjk fonts-noto-color-emoji \
-            python3-pil python3-cairosvg python3-websockets
+            python3-pil python3-cairosvg python3-websockets python3-numpy
 
       - name: Build .deb
         run: |
@@ -50,6 +50,12 @@ jobs:
           dpkg-deb -I "$deb"
           echo "=== contents ==="
           dpkg-deb -c "$deb" | head -40
+          echo "=== bundled Rust renderer ==="
+          renderer="main/tools/_watercolor_rust.so"
+          printf '%s  %s\n' \
+            '3470c55c664bff972102908c991ebacacb254e46889d5ad07af9dbd0bfb359dd' \
+            "$renderer" | sha256sum -c -
+          dpkg-deb -c "$deb" | grep -E '/_watercolor_rust\.(so|LICENSE)$'
 
       - uses: actions/upload-artifact@v4
         with:

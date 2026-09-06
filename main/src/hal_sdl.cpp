@@ -104,6 +104,14 @@ void HalSdl::poll() {
             continue;
         }
 
+        if (event.type == SDL_KEYDOWN && event.key.repeat == 0 && event.key.keysym.sym == SDLK_o) {
+            std::cout << "[hal-sdl] O press -> toggle display mode" << std::endl;
+            if (display_mode_toggle_cb_) {
+                display_mode_toggle_cb_();
+            }
+            continue;
+        }
+
         if (event.type == SDL_KEYUP && event.key.repeat == 0 && event.key.keysym.sym == active_wake_key_) {
             active_wake_key_ = SDLK_UNKNOWN;
             if (release_cb_) {
@@ -142,6 +150,10 @@ void HalSdl::onButtonPressed(std::function<void()> cb) {
 
 void HalSdl::onButtonReleased(std::function<void()> cb) {
     release_cb_ = std::move(cb);
+}
+
+void HalSdl::onDisplayModeToggle(std::function<void()> cb) {
+    display_mode_toggle_cb_ = std::move(cb);
 }
 
 }  // namespace xiaozhi

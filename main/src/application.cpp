@@ -32,6 +32,7 @@ bool Application::start() {
 
     hal_->onButtonPressed([this]() { onButtonPressed(); });
     hal_->onButtonReleased([this]() { onButtonReleased(); });
+    hal_->onDisplayModeToggle([this]() { ui_->toggleDisplayMode(); });
     last_ui_refresh_ = std::chrono::steady_clock::now();
 
     ws_->setOnServerText([this](const std::string& msg) {
@@ -81,6 +82,7 @@ bool Application::start() {
         setState(AppState::Speaking, "tts start", true);
     });
     ws_->setOnTtsPcm([this](const std::vector<int16_t>& pcm) {
+        ui_->setAudioSamples(pcm, true);
         audio_->playPcmFrame(pcm);
     });
     ws_->setOnTtsStop([this]() {
@@ -195,6 +197,7 @@ void Application::tick() {
     if (audio_->isCapturing()) {
         auto frame = audio_->readPcmFrame();
         if (!frame.empty()) {
+            ui_->setAudioSamples(frame, false);
             static int sent_frames = 0;
             sent_frames++;
             if (sent_frames <= 5 || sent_frames % 50 == 0) {

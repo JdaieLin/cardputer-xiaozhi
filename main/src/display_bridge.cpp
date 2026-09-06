@@ -1,8 +1,10 @@
 #include "display_bridge.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -19,6 +21,24 @@
 
 namespace xiaozhi {
 namespace {
+
+std::string base64Encode(const unsigned char* data, size_t size) {
+    static constexpr char kAlphabet[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string encoded;
+    encoded.reserve(((size + 2) / 3) * 4);
+    for (size_t offset = 0; offset < size; offset += 3) {
+        const uint32_t a = data[offset];
+        const uint32_t b = offset + 1 < size ? data[offset + 1] : 0;
+        const uint32_t c = offset + 2 < size ? data[offset + 2] : 0;
+        const uint32_t value = (a << 16) | (b << 8) | c;
+        encoded.push_back(kAlphabet[(value >> 18) & 0x3f]);
+        encoded.push_back(kAlphabet[(value >> 12) & 0x3f]);
+        encoded.push_back(offset + 1 < size ? kAlphabet[(value >> 6) & 0x3f] : '=');
+        encoded.push_back(offset + 2 < size ? kAlphabet[value & 0x3f] : '=');
+    }
+    return encoded;
+}
 
 std::string bridgeScriptPath() {
     if (const char* override_path = std::getenv("XIAOZHI_DISPLAY_BRIDGE"); override_path != nullptr && *override_path != '\0') {
@@ -222,6 +242,21 @@ void DisplayBridge::sendJsonLine(const std::string& json_line) {
 
 void DisplayBridge::setTerminalText(const std::string& text) {
     terminal_text_ = text;
+}
+
+void DisplayBridge::toggleDisplayMode() {
+    sendJsonLine("{\"cmd\":\"toggle_style\"}");
+}
+
+void DisplayBridge::setAudioSamples(const std::vector<int16_t>& pcm, bool assistant) {
+    if (!connected_ || pcm.empty()) return;
+    const auto* bytes = reinterpret_cast<const unsigned char*>(pcm.data());
+    const std::string payload = base64Encode(bytes, pcm.size() * sizeof(int16_t));
+    const std::string json =
+        "{\"cmd\":\"audio\",\"role\":\"" +
+        std::string(assistant ? "assistant" : "user") +
+        "\",\"sample_rate\":16000,\"pcm\":\"" + payload + "\"}";
+    sendJsonLine(json);
 }
 
 void DisplayBridge::renderState(AppState state, const std::string& text, const std::string& emoji) {

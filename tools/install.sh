@@ -5,6 +5,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKIP_APT="${XIAOZHI_INSTALL_SKIP_APT:-0}"
 EMOJI_ASSET_URL="${XIAOZHI_EMOJI_ASSET_URL:-https://storage.whisplay.ai/whisplay-ai-chatbot/emoji_svg.zip}"
 EMOJI_SVG_DIR="$SCRIPT_DIR/emoji_svg"
+WATERCOLOR_RENDERER_URL="${XIAOZHI_WATERCOLOR_RENDERER_URL:-https://raw.githubusercontent.com/PiSugar/whisplay-xiaozhi/1dd9f3997f40b413c2ff226a41329e18e73919cd/rust/watercolor_renderer/prebuilt/linux-aarch64/_watercolor_rust.so}"
+WATERCOLOR_RENDERER_SHA256="${XIAOZHI_WATERCOLOR_RENDERER_SHA256:-3470c55c664bff972102908c991ebacacb254e46889d5ad07af9dbd0bfb359dd}"
+if [ -n "${XIAOZHI_WATERCOLOR_RENDERER_DIR:-}" ]; then
+    WATERCOLOR_RENDERER_DIR="$XIAOZHI_WATERCOLOR_RENDERER_DIR"
+elif [ -f "/usr/share/APPLaunch/share/xiaozhi/display_bridge.py" ]; then
+    WATERCOLOR_RENDERER_DIR="/usr/share/APPLaunch/share/xiaozhi"
+elif [ -f "$SCRIPT_DIR/../main/tools/display_bridge.py" ]; then
+    WATERCOLOR_RENDERER_DIR="$SCRIPT_DIR/../main/tools"
+else
+    WATERCOLOR_RENDERER_DIR="$SCRIPT_DIR"
+fi
+WATERCOLOR_RENDERER="$WATERCOLOR_RENDERER_DIR/_watercolor_rust.so"
 # Bundled fonts may be next to install.sh (CI artifact) or inside .deb install path
 BUNDLED_FONTS=""
 for d in "$SCRIPT_DIR/fonts" "/usr/share/APPLaunch/share/xiaozhi/fonts"; do
@@ -26,7 +38,7 @@ echo "=== XiaoZhi App Launcher installer ==="
 
 # ── system packages ──────────────────────────────────────────────
 echo "[1/4] Installing system packages..."
-SYSTEM_PKGS="libsdl2-2.0-0 libsdl2-ttf-2.0-0 libopus0 python3 python3-pil python3-cairosvg curl unzip pipewire pipewire-pulse wireplumber"
+SYSTEM_PKGS="libsdl2-2.0-0 libsdl2-ttf-2.0-0 libopus0 python3 python3-pil python3-cairosvg python3-numpy curl unzip pipewire pipewire-pulse wireplumber"
 NEED_INSTALL=""
 
 for pkg in $SYSTEM_PKGS; do
@@ -194,6 +206,38 @@ else
         echo "  ⚠ Whisplay SVG emoji download failed; using font fallback"
     fi
     rm -rf "$EMOJI_TMP_DIR"
+fi
+
+# Install Whisplay's native renderer at setup time. The architecture-specific
+# binary remains outside both git and the .deb, just like the downloaded SVG
+# emoji artwork.
+if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+    if [ -s "$WATERCOLOR_RENDERER" ] && \
+        printf '%s  %s\n' "$WATERCOLOR_RENDERER_SHA256" "$WATERCOLOR_RENDERER" | sha256sum -c - >/dev/null 2>&1; then
+        echo "  ✓ Whisplay watercolor renderer: $WATERCOLOR_RENDERER"
+    else
+        echo "  → downloading Whisplay watercolor renderer..."
+        WATERCOLOR_TMP="$(mktemp)"
+        CURL_PROXY_ARGS=()
+        if [ -n "${XIAOZHI_WEB_TOOL_PROXY:-}" ]; then
+            CURL_PROXY_ARGS=(--proxy "$XIAOZHI_WEB_TOOL_PROXY")
+        fi
+        if curl -fL --retry 2 --connect-timeout 10 --max-time 180 \
+            "${CURL_PROXY_ARGS[@]}" -o "$WATERCOLOR_TMP" "$WATERCOLOR_RENDERER_URL"; then
+            if printf '%s  %s\n' "$WATERCOLOR_RENDERER_SHA256" "$WATERCOLOR_TMP" | sha256sum -c - >/dev/null 2>&1; then
+                mkdir -p "$WATERCOLOR_RENDERER_DIR"
+                install -m 0755 "$WATERCOLOR_TMP" "$WATERCOLOR_RENDERER"
+                echo "  ✓ Whisplay watercolor renderer installed"
+            else
+                echo "  ⚠ watercolor renderer checksum mismatch; classic mode remains available"
+            fi
+        else
+            echo "  ⚠ watercolor renderer download failed; classic mode remains available"
+        fi
+        rm -f "$WATERCOLOR_TMP"
+    fi
+else
+    echo "  → watercolor renderer unavailable for architecture $(uname -m)"
 fi
 
 # ── Verify ───────────────────────────────────────────────────────

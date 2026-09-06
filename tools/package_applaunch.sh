@@ -88,6 +88,8 @@ install -m 0755 "$BIN" "$PKG_ROOT/usr/share/APPLaunch/bin/$BIN_NAME"
 install -m 0644 "$ROOT_DIR/main/tools/ws_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/ws_bridge.py"
 install -m 0644 "$ROOT_DIR/main/tools/display_bridge.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/display_bridge.py"
 install -m 0644 "$ROOT_DIR/main/tools/mcp_tools.py" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/mcp_tools.py"
+install -m 0755 "$ROOT_DIR/main/tools/_watercolor_rust.so" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/_watercolor_rust.so"
+install -m 0644 "$ROOT_DIR/main/tools/_watercolor_rust.LICENSE" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/_watercolor_rust.LICENSE"
 install -m 0755 "$ROOT_DIR/tools/install.sh" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/install.sh"
 cp -R "$ROOT_DIR/main/tools/vendor/opuslib" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/vendor/"
 cp -R "$ROOT_DIR/main/tools/vendor/websockets" "$PKG_ROOT/usr/share/APPLaunch/share/xiaozhi/vendor/"
@@ -284,7 +286,7 @@ Maintainer: $MAINTAINER_NAME <$MAINTAINER_EMAIL>
 Section: APPLaunch
 Priority: optional
 Homepage: $HOMEPAGE_URL
-Depends: libsdl2-2.0-0, libsdl2-ttf-2.0-0, libopus0, python3, python3-pil, python3-cairosvg, curl, unzip, pipewire, pipewire-pulse, wireplumber
+Depends: libsdl2-2.0-0, libsdl2-ttf-2.0-0, libopus0, python3, python3-pil, python3-cairosvg, python3-numpy, curl, unzip, pipewire, pipewire-pulse, wireplumber
 Description: $DESCRIPTION for M5Cardputer Zero
 EOF
 

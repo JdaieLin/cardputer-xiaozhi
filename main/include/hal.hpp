@@ -12,6 +12,7 @@ public:
     virtual bool shouldQuit() const { return false; }
     virtual void onButtonPressed(std::function<void()> cb) = 0;
     virtual void onButtonReleased(std::function<void()> cb) = 0;
+    virtual void onDisplayModeToggle(std::function<void()> cb) { (void)cb; }
 };
 
 class HalStub final : public Hal {
